@@ -97,6 +97,7 @@ tbody tr:nth-child(even){background:var(--soft)}
 .chip-badge{font-size:.66rem;padding:2px 7px;border-radius:999px;background:var(--ok-bg);color:var(--ok-ink);font-weight:800;vertical-align:1px}
 tfoot th{background:var(--soft);color:var(--ink);position:static}
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 <div class="wrap">
@@ -112,6 +113,7 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
   <div class="tabs">
     <button class="tab active" data-panel="prod">📋 Producciones</button>
     <button class="tab" data-panel="recetas">📖 Recetas y costos</button>
+    <button class="tab" data-panel="inventario">📦 Inventarios</button>
   </div>
 
   <div id="panel-prod">
@@ -199,6 +201,24 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
       <div id="recFormWrap"></div>
       <div class="banner info" id="recNota" style="margin:4px 0 10px"></div>
       <div id="recList" style="display:flex;flex-direction:column;gap:10px"><div class="empty">Cargando recetas…</div></div>
+    </section>
+  </div>
+
+  <div id="panel-inventario" hidden>
+    <section class="card step">
+      <div class="rev-head">
+        <div><h2>Inventarios por área</h2><p class="sub">Cuenta por área y calcula el valor (cantidad × costo). Las recetas/salsas entran solas como ítems.</p></div>
+        <div class="row"><button class="primary sm" id="btnExcelInv">⬇ Excel</button><button class="ghost sm" id="btnPrintInv">🖨 Imprimir área</button></div>
+      </div>
+      <div class="row" id="areaTabs" style="margin:12px 0;gap:6px;flex-wrap:wrap"></div>
+      <div class="row" style="margin-bottom:10px"><button class="ghost sm" id="btnAddInv">＋ Agregar ítem</button><button class="primary sm" id="btnGuardarConteo">Guardar conteo</button><span class="muted" id="invMsg" style="font-size:.8rem"></span></div>
+      <div id="invFormWrap"></div>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Producto</th><th>Unidad</th><th class="num">Costo unit.</th><th class="num">Cantidad</th><th class="num">Valor</th><th></th></tr></thead>
+        <tbody id="invBody"><tr><td colspan="6"><div class="empty">Cargando…</div></td></tr></tbody>
+        <tfoot><tr><th colspan="4" style="text-align:right">Total área</th><th class="num" id="invTotArea">$0</th><th></th></tr></tfoot>
+      </table></div>
+      <div class="totbar" id="invResumen" style="margin-top:10px"></div>
     </section>
   </div>
 
@@ -390,7 +410,10 @@ document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
   const p=t.dataset.panel;
   document.getElementById('panel-prod').hidden=(p!=='prod');
   document.getElementById('panel-recetas').hidden=(p!=='recetas');
-  if(p==='recetas'){ window.scrollTo(0,0); cargarRecetas(); }
+  document.getElementById('panel-inventario').hidden=(p!=='inventario');
+  window.scrollTo(0,0);
+  if(p==='recetas') cargarRecetas();
+  if(p==='inventario') cargarInventario();
 }));
 
 /* ===== Recetas y costos ===== */
@@ -548,13 +571,158 @@ async function guardarReceta(){
   try{
     const r=await fetch(RREST,{method:"POST",headers:Object.assign({},HDRS,{"Prefer":"return=minimal"}),body:JSON.stringify(body)});
     if(!r.ok) throw 0;
-    msg.textContent='✓ Guardada';
+    try{ await fetch(IREST,{method:"POST",headers:Object.assign({},HDRS,{"Prefer":"return=minimal"}),body:JSON.stringify({nombre:body.nombre,area:'SALSAS',unidad:body.unidad,costo:body.costo,tipo:'preparacion',ref_codigo:body.codigo})}); }catch(e){}
+    msg.textContent='✓ Guardada (y en inventario)';
     document.getElementById('recFormWrap').innerHTML='';
     cargarRecetas();
   }catch(e){ msg.textContent='Error al guardar'; }
 }
 document.getElementById('buscarRec').addEventListener('input',renderRecetas);
 document.getElementById('btnRefRec').addEventListener('click',cargarRecetas);
+
+/* ===== Inventarios ===== */
+const AREAS=["ABARROTES","CÁRNICOS","CONGELADOS","FRUVER","LÁCTEOS","PANADERÍA","FRITOS","ADOBOS","PARRILLA","COCINA","ENSALADAS","SALSAS","PIZZA","BAR"];
+const IREST=SB_URL+"/rest/v1/inventario";
+let INV=[]; let areaSel=AREAS[0];
+async function cargarInventario(){
+  if(!REC_DB.length){ try{const r=await fetch(RREST+"?select=*",{headers:HDRS}); REC_DB=r.ok?await r.json():[];}catch(e){} }
+  try{ const r=await fetch(IREST+"?select=*&order=nombre.asc",{headers:HDRS}); INV=r.ok?await r.json():[]; }catch(e){ INV=[]; }
+  renderAreaTabs(); renderInv();
+}
+function renderAreaTabs(){
+  const c=document.getElementById('areaTabs'); c.innerHTML='';
+  AREAS.forEach(a=>{
+    const n=INV.filter(x=>x.area===a).length;
+    const b=document.createElement('button'); b.className='tab'+(a===areaSel?' active':'');
+    b.style.flex='none'; b.style.position='static'; b.style.padding='7px 12px';
+    b.textContent=a+(n?(' ('+n+')'):''); b.onclick=()=>{areaSel=a;renderAreaTabs();renderInv();};
+    c.appendChild(b);
+  });
+}
+function valorItem(it){
+  const q=it.cantidad; if(q==null||q===''||isNaN(q)||it.costo==null) return null;
+  return Math.round(Number(q)*Number(it.costo));
+}
+function renderInv(){
+  const items=INV.filter(x=>x.area===areaSel);
+  const b=document.getElementById('invBody');
+  if(!items.length){ b.innerHTML='<tr><td colspan="6"><div class="empty">Sin ítems en esta área. Usa “＋ Agregar ítem”.</div></td></tr>'; }
+  else{
+    b.innerHTML='';
+    for(const it of items){
+      const tr=document.createElement('tr'); const val=valorItem(it);
+      tr.innerHTML='<td>'+it.nombre+(it.tipo==='preparacion'?' <span class="chip-badge">receta</span>':'')+'</td>'
+        +'<td>'+(it.unidad||'')+'</td>'
+        +'<td class="num">'+(it.costo!=null?'$'+fmtN(it.costo):'—')+'</td>'
+        +'<td class="num"><input type="number" step="any" value="'+(it.cantidad!=null?it.cantidad:'')+'" data-id="'+it.id+'" class="invq" style="width:82px;text-align:right"></td>'
+        +'<td class="num invval">'+(val==null?'':'$'+fmtN(val))+'</td>'
+        +'<td><button class="ghost sm invdel" data-id="'+it.id+'">✕</button></td>';
+      b.appendChild(tr);
+    }
+    b.querySelectorAll('.invq').forEach(inp=>inp.addEventListener('input',()=>{
+      const it=INV.find(x=>x.id==inp.dataset.id); it.cantidad=inp.value;
+      inp.closest('tr').querySelector('.invval').textContent=(valorItem(it)==null?'':'$'+fmtN(valorItem(it)));
+      totArea(); renderResumen();
+    }));
+    b.querySelectorAll('.invdel').forEach(x=>x.addEventListener('click',()=>borrarItem(x.dataset.id)));
+  }
+  totArea(); renderResumen();
+}
+function totArea(){
+  let t=0; INV.filter(x=>x.area===areaSel).forEach(it=>{const v=valorItem(it); if(v)t+=v;});
+  document.getElementById('invTotArea').textContent='$'+fmtN(t);
+}
+function renderResumen(){
+  let gt=0; const parts=[];
+  AREAS.forEach(a=>{ let t=0; INV.filter(x=>x.area===a).forEach(it=>{const v=valorItem(it);if(v)t+=v;}); if(t){parts.push(a+': <b>$'+fmtN(t)+'</b>');gt+=t;} });
+  document.getElementById('invResumen').innerHTML='Total inventario: <b>$'+fmtN(gt)+'</b>'+(parts.length?(' · '+parts.join(' · ')):'');
+}
+async function borrarItem(id){
+  try{ await fetch(IREST+"?id=eq."+id,{method:"DELETE",headers:HDRS}); }catch(e){}
+  INV=INV.filter(x=>x.id!=id); renderAreaTabs(); renderInv();
+}
+async function guardarConteo(){
+  const msg=document.getElementById('invMsg'); msg.textContent='Guardando…'; const hoy=todayISO();
+  try{
+    for(const it of INV){
+      await fetch(IREST+"?id=eq."+it.id,{method:"PATCH",headers:Object.assign({},HDRS,{"Prefer":"return=minimal"}),
+        body:JSON.stringify({cantidad:(it.cantidad===''||it.cantidad==null?null:Number(it.cantidad)),fecha_conteo:hoy})});
+    }
+    msg.textContent='✓ Conteo guardado';
+  }catch(e){ msg.textContent='Error al guardar'; }
+  setTimeout(()=>{msg.textContent='';},2500);
+}
+document.getElementById('btnAddInv').addEventListener('click',abrirFormInv);
+function abrirFormInv(){
+  const w=document.getElementById('invFormWrap');
+  if(w.innerHTML){ w.innerHTML=''; return; }
+  w.innerHTML='<div class="rev" style="margin-bottom:12px">'
+    +'<div class="rev-head"><b>Agregar ítem a '+areaSel+'</b><button class="ghost sm" id="cerrarInv">✕</button></div>'
+    +'<div class="grid">'
+    +'<label class="field">Tipo<select id="iTipo"><option value="preparacion">Receta / preparación</option><option value="insumo">Insumo</option><option value="manual">Manual</option></select></label>'
+    +'<label class="field full">Producto<input id="iNom" list="itemList" placeholder="Escribe o elige"></label>'
+    +'<label class="field">Unidad<select id="iUn"><option>kg</option><option>g</option><option>L</option><option>Ml</option><option>UND</option><option>PORC</option></select></label>'
+    +'<label class="field">Costo unitario<input id="iCosto" type="number" step="any" placeholder="0"></label>'
+    +'</div><datalist id="itemList"></datalist>'
+    +'<div class="row" style="margin-top:10px"><button class="primary" id="iGuardar">Agregar</button><span class="muted" id="iMsg" style="font-size:.8rem"></span></div>'
+    +'</div>';
+  document.getElementById('cerrarInv').onclick=()=>{w.innerHTML='';};
+  const tipoSel=document.getElementById('iTipo');
+  function fillList(){
+    const dl=document.getElementById('itemList'); const t=tipoSel.value;
+    if(t==='preparacion') dl.innerHTML=recetasAll().map(r=>'<option value="'+r.n.replace(/"/g,'&quot;')+'">').join('');
+    else if(t==='insumo') dl.innerHTML=INGS.map(i=>'<option value="'+i.n.replace(/"/g,'&quot;')+'">').join('');
+    else dl.innerHTML='';
+  }
+  tipoSel.onchange=fillList; fillList();
+  document.getElementById('iNom').addEventListener('input',()=>{
+    const t=tipoSel.value, nom=document.getElementById('iNom').value;
+    if(t==='preparacion'){ const r=recetasAll().find(x=>norm(x.n)===norm(nom)); if(r){ const cc=r.nueva?{tot:r.cost}:costoReceta(r.items); document.getElementById('iCosto').value=cc.tot||''; if(r.u)document.getElementById('iUn').value=r.u; } }
+    else if(t==='insumo'){ const m=COSTMAP[norm(nom)]; if(m){ document.getElementById('iCosto').value=m.c; if(m.b)document.getElementById('iUn').value=m.b; } }
+  });
+  document.getElementById('iGuardar').onclick=guardarItemInv;
+}
+async function guardarItemInv(){
+  const nom=document.getElementById('iNom').value.trim(); const msg=document.getElementById('iMsg');
+  if(!nom){ msg.textContent='Falta el nombre'; return; }
+  const body={nombre:nom.toUpperCase(),area:areaSel,unidad:document.getElementById('iUn').value,
+    costo:parseFloat(document.getElementById('iCosto').value)||null,tipo:document.getElementById('iTipo').value};
+  msg.textContent='Guardando…';
+  try{
+    const r=await fetch(IREST,{method:"POST",headers:Object.assign({},HDRS,{"Prefer":"return=representation"}),body:JSON.stringify(body)});
+    if(!r.ok) throw 0; const rows=await r.json(); if(rows&&rows[0]) INV.push(rows[0]);
+    document.getElementById('invFormWrap').innerHTML=''; renderAreaTabs(); renderInv();
+  }catch(e){ msg.textContent='Error'; }
+}
+function excelInv(){
+  if(typeof XLSX==='undefined'){ alert('El módulo de Excel aún está cargando, intenta de nuevo en unos segundos.'); return; }
+  const wb=XLSX.utils.book_new(); const resumen=[["Área","Ítems","Valor total"]]; let gt=0;
+  AREAS.forEach(a=>{
+    const items=INV.filter(x=>x.area===a); const aoa=[["Producto","Unidad","Costo unit.","Cantidad","Valor"]]; let t=0;
+    items.forEach(it=>{ const v=valorItem(it); if(v)t+=v; aoa.push([it.nombre,it.unidad||'',it.costo||'',it.cantidad||'',v||'']); });
+    aoa.push(["","","","TOTAL",t]);
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),a.substring(0,31));
+    resumen.push([a,items.length,t]); gt+=t;
+  });
+  resumen.push(["","TOTAL",gt]);
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(resumen),"RESUMEN");
+  wb.SheetNames.unshift(wb.SheetNames.pop());
+  XLSX.writeFile(wb,"Inventario_AlmaPatio_"+todayISO()+".xlsx");
+}
+function printInv(){
+  const items=INV.filter(x=>x.area===areaSel); let t=0;
+  const rows=items.map(it=>{const v=valorItem(it); if(v)t+=v;
+    return '<tr><td>'+it.nombre+'</td><td>'+(it.unidad||'')+'</td><td class="r">'+(it.costo!=null?'$'+fmtN(it.costo):'')+'</td><td class="r">'+(it.cantidad!=null?it.cantidad:'')+'</td><td class="r">'+(v!=null?'$'+fmtN(v):'')+'</td></tr>';}).join('');
+  const w=window.open('','_blank');
+  w.document.write('<html><head><title>Inventario '+areaSel+'</title><style>body{font-family:Arial;padding:20px;color:#20291f}h2{margin:0;color:#1f3a2e}table{border-collapse:collapse;width:100%;margin-top:12px;font-size:13px}th,td{border:1px solid #999;padding:6px 8px}th{background:#1f3a2e;color:#fff;text-align:left}.r{text-align:right}</style></head><body>'
+    +'<h2>Alma Patio — Inventario: '+areaSel+'</h2><div>Fecha: '+todayISO()+'</div>'
+    +'<table><thead><tr><th>Producto</th><th>Unidad</th><th>Costo unit.</th><th>Cantidad</th><th>Valor</th></tr></thead><tbody>'+rows
+    +'<tr><td colspan="4" class="r"><b>TOTAL</b></td><td class="r"><b>$'+fmtN(t)+'</b></td></tr></tbody></table></body></html>');
+  w.document.close(); w.focus(); setTimeout(()=>{try{w.print();}catch(e){}},500);
+}
+document.getElementById('btnGuardarConteo').addEventListener('click',guardarConteo);
+document.getElementById('btnExcelInv').addEventListener('click',excelInv);
+document.getElementById('btnPrintInv').addEventListener('click',printInv);
 </script>
 </body>
 </html>
