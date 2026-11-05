@@ -554,20 +554,34 @@ document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
 
 /* ===== Recetas y costos ===== */
 const uDiv=u=>{u=(u||'').toLowerCase();return (u==='g'||u==='gr'||u==='grs'||u==='ml')?1000:1;};
-function costoItem(ing,qty,un){
-  const m=COSTMAP[norm(ing)];
-  if(!m||qty==null||qty===''||isNaN(qty))return null;
-  return Math.round((Number(qty)/uDiv(un))*m.c);
+function costoItemR(ing,qty,un,seen){
+  if(qty==null||qty===''||isNaN(qty))return null;
+  const key=norm(ing);
+  const m=COSTMAP[key];
+  if(m) return Math.round((Number(qty)/uDiv(un))*m.c); // insumo con precio directo
+  if(seen&&seen[key]) return null; // evita ciclos (A usa B usa A)
+  const sub=recetasAll().find(x=>norm(x.n)===key); // ¿el ingrediente es otra receta?
+  if(sub){
+    const s2=Object.assign({},seen||{}); s2[key]=true;
+    const cc=costoRecetaR(sub.items,s2);
+    const rend=Number(sub.rend)||1;
+    const perUnit=cc.tot/rend; // costo por unidad de rinde de la sub-receta
+    if(!isFinite(perUnit)||perUnit<=0) return null;
+    return Math.round((Number(qty)/uDiv(un))*perUnit);
+  }
+  return null;
 }
-function costoReceta(items){
+function costoRecetaR(items,seen){
   let tot=0, falta=[];
   for(const it of (items||[])){
     const ing=it.i!=null?it.i:it.ing, q=it.q!=null?it.q:it.qty, u=it.u!=null?it.u:it.un;
-    const lc=costoItem(ing,q,u);
+    const lc=costoItemR(ing,q,u,seen);
     if(lc==null) falta.push(ing); else tot+=lc;
   }
   return {tot:Math.round(tot),falta};
 }
+function costoItem(ing,qty,un){ return costoItemR(ing,qty,un,{}); }
+function costoReceta(items){ return costoRecetaR(items,{}); }
 let REC_DB=[];
 async function cargarRecetas(){
   try{
@@ -602,7 +616,7 @@ function renderRecetas(){
   el.innerHTML='';
   for(const r of list){
     const items=r.items||[];
-    const cc = r.nueva ? {tot:(r.cost==null?null:r.cost),falta:[]} : costoReceta(items);
+    const cc = costoReceta(items);
     const costTxt=(cc.tot==null)?'—':'$'+fmtN(cc.tot);
     const cu=(cc.tot!=null&&r.rend)?('$'+fmtN(Math.round(cc.tot/Number(r.rend)))+'/'+(r.u||'u')):'';
     const rows=items.map(it=>{
@@ -665,7 +679,7 @@ function abrirFormReceta(cod){
     +'<label class="field">Rinde (cantidad)<input id="nrRend" type="number" step="any" placeholder="1" value="'+(rec&&rec.rend!=null?rec.rend:'')+'"></label>'
     +'<label class="field">Unidad<select id="nrUn">'+uopts.map(u=>'<option '+(rec&&String(rec.u||'').toUpperCase()===u?'selected':'')+'>'+u+'</option>').join('')+'</select></label></div>'
     +'<p class="sub" style="margin-top:10px">Ingredientes</p>'
-    +'<datalist id="ingList">'+INGS.map(i=>'<option value="'+i.n.replace(/"/g,'&quot;')+'">').join('')+'</datalist>'
+    +'<datalist id="ingList">'+INGS.map(i=>'<option value="'+i.n.replace(/"/g,'&quot;')+'">').join('')+recetasAll().filter(x=>x.c!==editCod).map(x=>'<option value="'+String(x.n).replace(/"/g,'&quot;')+'">↳ sub-receta</option>').join('')+'</datalist>'
     +'<div id="nrItems"></div>'
     +'<button class="ghost sm" id="nrAdd" style="margin-top:8px">+ Ingrediente</button>'
     +'<div class="calc" style="margin-top:10px">Costo estimado: <b id="nrCost">$0</b></div>'
@@ -842,7 +856,7 @@ function abrirFormInv(){
   tipoSel.onchange=fillList; fillList();
   document.getElementById('iNom').addEventListener('input',()=>{
     const t=tipoSel.value, nom=document.getElementById('iNom').value;
-    if(t==='preparacion'){ const r=recetasAll().find(x=>norm(x.n)===norm(nom)); if(r){ const cc=r.nueva?{tot:r.cost}:costoReceta(r.items); document.getElementById('iCosto').value=cc.tot||''; if(r.u)document.getElementById('iUn').value=r.u; } }
+    if(t==='preparacion'){ const r=recetasAll().find(x=>norm(x.n)===norm(nom)); if(r){ const cc=costoReceta(r.items); document.getElementById('iCosto').value=cc.tot||''; if(r.u)document.getElementById('iUn').value=r.u; } }
     else if(t==='insumo'){ const m=COSTMAP[norm(nom)]; if(m){ document.getElementById('iCosto').value=m.c; if(m.b)document.getElementById('iUn').value=m.b; } }
   });
   document.getElementById('iGuardar').onclick=guardarItemInv;
