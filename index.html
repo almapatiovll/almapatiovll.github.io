@@ -294,7 +294,11 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
 
   <div id="panel-facturas" hidden>
     <datalist id="insumosList"></datalist>
-    <section class="card step">
+    <div class="row" id="fvNav" style="margin:0 0 12px 0;gap:6px">
+      <button class="primary sm" data-fv="facturas">🧾 Facturas</button>
+      <button class="ghost sm" data-fv="proveedores">🏢 Proveedores (histórico)</button>
+    </div>
+    <section class="card step" id="secFactUpload">
       <div class="rev-head"><div><h2>Facturas de compra</h2><p class="sub">Sube la foto de la factura, revisa y guarda. Queda por proveedor, arma tu base de compras y alimenta el histórico de precios de insumos.</p></div></div>
       <div class="row" style="margin-top:12px">
         <input id="fileFact" type="file" accept="image/*" capture="environment" hidden>
@@ -331,7 +335,7 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
       <div id="factGuardMsg" class="muted" style="font-size:.85rem;margin-top:8px"></div>
     </section>
 
-    <section class="card">
+    <section class="card" id="secFactList">
       <div class="rev-head"><div><h2>Facturas guardadas</h2><p class="sub">Tu base de compras por proveedor.</p></div></div>
       <div class="row" style="margin:12px 0">
         <input id="buscarFact" placeholder="Buscar proveedor o producto…" style="flex:1;min-width:140px">
@@ -339,6 +343,16 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
       </div>
       <div class="totbar" id="factResumen"></div>
       <div id="factList" style="display:flex;flex-direction:column;gap:10px;margin-top:10px"><div class="empty">Cargando…</div></div>
+    </section>
+
+    <section class="card" id="secProveedores" hidden>
+      <div class="rev-head"><div><h2>Proveedores — histórico</h2><p class="sub">Cada proveedor con todas sus facturas, el total comprado y la evolución de precios por producto. Toca para ver el detalle.</p></div></div>
+      <div class="row" style="margin:12px 0">
+        <input id="buscarProv" placeholder="Buscar proveedor…" style="flex:1;min-width:140px">
+        <button class="ghost sm" id="btnRefProv">↻</button>
+      </div>
+      <div class="totbar" id="provResumen"></div>
+      <div id="provList" style="display:flex;flex-direction:column;gap:10px;margin-top:10px"><div class="empty">Cargando…</div></div>
     </section>
   </div>
 
@@ -958,6 +972,52 @@ async function cargarFacturas(){
   llenarInsumosList();
   try{ const r=await fetch(FREST+"?select=*&order=fecha.desc,creado_en.desc&limit=500",{headers:HDRS}); FACT=r.ok?await r.json():[]; }catch(e){ FACT=[]; }
   renderFacturas();
+  if(factView==='proveedores') renderProveedores();
+}
+let factView='facturas';
+function setFactView(v){
+  factView=v;
+  document.querySelectorAll('#fvNav [data-fv]').forEach(b=>b.className=(b.dataset.fv===v?'primary sm':'ghost sm'));
+  document.getElementById('secFactUpload').hidden=(v!=='facturas');
+  document.getElementById('secFactList').hidden=(v!=='facturas');
+  if(v!=='facturas') document.getElementById('secRevFact').hidden=true;
+  document.getElementById('secProveedores').hidden=(v!=='proveedores');
+  if(v==='proveedores') renderProveedores();
+}
+function renderProveedores(){
+  const q=norm((document.getElementById('buscarProv')||{}).value||'');
+  const prov={};
+  FACT.forEach(f=>{
+    const p=f.proveedor||'—';
+    const o=prov[p]||(prov[p]={nombre:p,total:0,fac:[],prods:{},ult:''});
+    o.total+=Number(f.total)||0; o.fac.push(f);
+    if((f.fecha||'')>o.ult)o.ult=f.fecha||'';
+    (f.items||[]).forEach(it=>{
+      if(it.precioUnit==null)return; const k=norm(it.producto); if(!k)return;
+      const pp=o.prods[k]||(o.prods[k]={nombre:it.producto,hist:[]});
+      pp.hist.push({fecha:f.fecha||'',precio:Number(it.precioUnit),unidad:it.unidad||''});
+    });
+  });
+  let gt=0; Object.values(prov).forEach(o=>gt+=o.total);
+  const arr=Object.values(prov).filter(o=>!q||norm(o.nombre).includes(q)).sort((a,b)=>b.total-a.total);
+  document.getElementById('provResumen').innerHTML='Total compras: <b>$'+fmtN(gt)+'</b> · '+Object.keys(prov).length+' proveedores';
+  const el=document.getElementById('provList');
+  if(!arr.length){ el.innerHTML='<div class="empty">Sin proveedores aún. Guarda facturas para armar el histórico.</div>'; return; }
+  el.innerHTML='';
+  arr.forEach(o=>{
+    o.fac.sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
+    const facRows=o.fac.map(f=>'<tr><td>'+(f.fecha||'')+'</td><td>'+(f.numero||'')+'</td><td class="num">'+((f.items||[]).length)+'</td><td class="num">$'+fmtN(f.total)+'</td></tr>').join('');
+    const prodArr=Object.values(o.prods).map(p=>{ p.hist.sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||'')); const ult=p.hist[p.hist.length-1], prim=p.hist[0]; const dif=(ult&&prim&&prim.precio)?Math.round((ult.precio-prim.precio)/prim.precio*100):null; return {nombre:p.nombre,ult:ult.precio,uni:ult.unidad,n:p.hist.length,dif}; }).sort((a,b)=>a.nombre.localeCompare(b.nombre));
+    const precRows=prodArr.map(p=>'<tr><td>'+p.nombre+'</td><td class="num">$'+fmtN(p.ult)+'</td><td>'+(p.uni||'')+'</td><td class="num">'+(p.n>1&&p.dif!=null?((p.dif>0?'+':'')+p.dif+'%'):'—')+'</td></tr>').join('');
+    const card=document.createElement('div'); card.className='recipe';
+    card.innerHTML='<div class="rhead"><span class="caret">▸</span><div><div class="rname">'+o.nombre+'</div><div class="rmeta">'+o.fac.length+' facturas'+(o.ult?(' · última '+o.ult):'')+' · '+prodArr.length+' productos</div></div><div class="cost">$'+fmtN(o.total)+'</div></div>'
+      +'<div class="rbody">'
+      +'<p class="sub" style="margin:10px 0 2px"><b>Facturas</b></p><div class="tablewrap"><table><thead><tr><th>Fecha</th><th>N°</th><th class="num">Ítems</th><th class="num">Total</th></tr></thead><tbody>'+facRows+'</tbody></table></div>'
+      +'<p class="sub" style="margin:12px 0 2px"><b>Precios por producto (último y variación)</b></p><div class="tablewrap"><table><thead><tr><th>Producto</th><th class="num">Último precio</th><th>Un.</th><th class="num">Var.</th></tr></thead><tbody>'+(precRows||'<tr><td colspan="4" class="empty">Sin precios</td></tr>')+'</tbody></table></div>'
+      +'</div>';
+    card.querySelector('.rhead').addEventListener('click',()=>card.classList.toggle('open'));
+    el.appendChild(card);
+  });
 }
 async function leerFactura(){
   if(!pendingFact)return;
@@ -1070,6 +1130,9 @@ async function borrarFactura(id){
   if(g('btnGuardarFact'))g('btnGuardarFact').onclick=guardarFactura;
   if(g('buscarFact'))g('buscarFact').addEventListener('input',renderFacturas);
   if(g('btnRefFact'))g('btnRefFact').addEventListener('click',cargarFacturas);
+  document.querySelectorAll('#fvNav [data-fv]').forEach(b=>b.addEventListener('click',()=>setFactView(b.dataset.fv)));
+  if(g('buscarProv'))g('buscarProv').addEventListener('input',renderProveedores);
+  if(g('btnRefProv'))g('btnRefProv').addEventListener('click',cargarFacturas);
 })();
 
 /* ===== Login + usuarios ===== */
