@@ -583,7 +583,7 @@ document.getElementById('buscarRec').addEventListener('input',renderRecetas);
 document.getElementById('btnRefRec').addEventListener('click',cargarRecetas);
 
 /* ===== Inventarios ===== */
-const AREAS=["ABARROTES","CÁRNICOS","CONGELADOS","FRUVER","LÁCTEOS","PANADERÍA","FRITOS","ADOBOS","PARRILLA","COCINA","ENSALADAS","SALSAS","PIZZA","BAR"];
+const AREAS=["FRITOS","ADOBOS","PARRILLA","COCINA","ENSALADAS","SALSAS","PIZZA","BAR","CAFETERIA","ALMACEN"];
 const IREST=SB_URL+"/rest/v1/inventario";
 let INV=[]; let areaSel=AREAS[0];
 async function cargarInventario(){
