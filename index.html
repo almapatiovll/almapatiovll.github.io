@@ -152,6 +152,7 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
     <button class="tab active" data-panel="prod">📋 Producciones</button>
     <button class="tab" data-panel="recetas">📖 Recetas y costos</button>
     <button class="tab" data-panel="inventario">📦 Inventarios</button>
+    <button class="tab" data-panel="facturas">🧾 Facturas</button>
   </div>
 
   <div id="panel-prod">
@@ -288,6 +289,56 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
         <tbody id="anBody"><tr><td colspan="6"><div class="empty">Abre esta pestaña para calcular.</div></td></tr></tbody>
       </table></div>
       <div class="totbar" id="anResumen" style="margin-top:10px"></div>
+    </section>
+  </div>
+
+  <div id="panel-facturas" hidden>
+    <datalist id="insumosList"></datalist>
+    <section class="card step">
+      <div class="rev-head"><div><h2>Facturas de compra</h2><p class="sub">Sube la foto de la factura, revisa y guarda. Queda por proveedor, arma tu base de compras y alimenta el histórico de precios de insumos.</p></div></div>
+      <div class="row" style="margin-top:12px">
+        <input id="fileFact" type="file" accept="image/*" capture="environment" hidden>
+        <button class="primary" id="btnPickFact">📷 Tomar / elegir factura</button>
+        <button class="ghost" id="btnManualFact">+ Factura manual</button>
+        <span id="factMsg" class="muted" style="font-size:.85rem"></span>
+      </div>
+      <div id="previewFact" class="row" style="margin-top:12px" hidden>
+        <img id="thumbFact" class="thumb" alt="factura">
+        <button class="primary" id="btnLeerFact">Leer factura →</button>
+        <button class="ghost sm" id="btnQuitaFact">Quitar</button>
+      </div>
+    </section>
+
+    <section class="card step" id="secRevFact" hidden>
+      <h2>Revisar factura</h2>
+      <p class="sub">Corrige proveedor, fecha y los productos. Los precios alimentan el costeo de recetas.</p>
+      <div class="grid" style="margin-top:10px">
+        <label class="field">Proveedor<input id="fProv" placeholder="Nombre del proveedor"></label>
+        <label class="field">NIT<input id="fNit" placeholder="opcional"></label>
+        <label class="field">N° factura<input id="fNum" placeholder="opcional"></label>
+        <label class="field">Fecha<input id="fFecha" type="date"></label>
+      </div>
+      <div class="tablewrap" style="margin-top:12px"><table>
+        <thead><tr><th>Producto</th><th class="num">Cant.</th><th>Unidad</th><th class="num">Precio unit.</th><th class="num">Total</th><th></th></tr></thead>
+        <tbody id="factItems"></tbody>
+        <tfoot><tr><th colspan="4" style="text-align:right">Total factura</th><th class="num" id="fTotal">$0</th><th></th></tr></tfoot>
+      </table></div>
+      <div class="row" style="margin-top:12px">
+        <button class="ghost sm" id="btnAddFactItem">+ Producto</button>
+        <label class="row" style="gap:6px;align-items:center;font-size:.85rem"><input type="checkbox" id="fActualizaPrecios" checked> Actualizar precios de insumos</label>
+        <button class="primary right" id="btnGuardarFact">Guardar factura</button>
+      </div>
+      <div id="factGuardMsg" class="muted" style="font-size:.85rem;margin-top:8px"></div>
+    </section>
+
+    <section class="card">
+      <div class="rev-head"><div><h2>Facturas guardadas</h2><p class="sub">Tu base de compras por proveedor.</p></div></div>
+      <div class="row" style="margin:12px 0">
+        <input id="buscarFact" placeholder="Buscar proveedor o producto…" style="flex:1;min-width:140px">
+        <button class="ghost sm" id="btnRefFact">↻</button>
+      </div>
+      <div class="totbar" id="factResumen"></div>
+      <div id="factList" style="display:flex;flex-direction:column;gap:10px;margin-top:10px"><div class="empty">Cargando…</div></div>
     </section>
   </div>
 
@@ -480,9 +531,11 @@ document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
   document.getElementById('panel-prod').hidden=(p!=='prod');
   document.getElementById('panel-recetas').hidden=(p!=='recetas');
   document.getElementById('panel-inventario').hidden=(p!=='inventario');
+  document.getElementById('panel-facturas').hidden=(p!=='facturas');
   window.scrollTo(0,0);
   if(p==='recetas') cargarRecetas();
   if(p==='inventario') cargarInventario();
+  if(p==='facturas') cargarFacturas();
 }));
 
 /* ===== Recetas y costos ===== */
@@ -894,6 +947,130 @@ document.querySelectorAll('#invTipoF [data-tf]').forEach(b=>b.addEventListener('
 document.getElementById('btnGuardarConteo').addEventListener('click',guardarConteo);
 document.getElementById('btnExcelInv').addEventListener('click',excelInv);
 document.getElementById('btnPrintInv').addEventListener('click',printInv);
+
+/* ===== Facturas de compra ===== */
+const FREST=SB_URL+"/rest/v1/facturas";
+const PREST=SB_URL+"/rest/v1/insumo_precios";
+let FACT=[]; let factRev=[]; let pendingFact=null;
+function num(x){ if(x==null||x==='')return null; const n=Number(x); return isNaN(n)?null:n; }
+function llenarInsumosList(){ const dl=document.getElementById('insumosList'); if(dl&&typeof INGS!=='undefined') dl.innerHTML=INGS.map(i=>'<option value="'+i.n.replace(/"/g,'&quot;')+'">').join(''); }
+async function cargarFacturas(){
+  llenarInsumosList();
+  try{ const r=await fetch(FREST+"?select=*&order=fecha.desc,creado_en.desc&limit=500",{headers:HDRS}); FACT=r.ok?await r.json():[]; }catch(e){ FACT=[]; }
+  renderFacturas();
+}
+async function leerFactura(){
+  if(!pendingFact)return;
+  const btn=document.getElementById('btnLeerFact'); btn.disabled=true; btn.innerHTML='<span class="spin"></span> Leyendo…';
+  try{
+    const {base64,mediaType}=await prepImage(pendingFact);
+    const r=await fetch(FN,{method:"POST",headers:HDRS,body:JSON.stringify({image:base64,mediaType,modo:'factura'})});
+    const out=await r.json().catch(()=>({}));
+    if(!r.ok){ if(out&&out.cuota)throw new Error("CUOTA"); throw new Error("fn "+r.status); }
+    let obj=out.factura||null; let t=out.text||"";
+    if(!obj){ const a=t.indexOf("{"), b=t.lastIndexOf("}"); if(a>=0&&b>a) obj=JSON.parse(t.slice(a,b+1)); }
+    if(!obj) throw new Error("vacio");
+    llenarRevFactura(obj);
+    document.getElementById('secRevFact').hidden=false; document.getElementById('previewFact').hidden=true; pendingFact=null; document.getElementById('fileFact').value='';
+    document.getElementById('secRevFact').scrollIntoView({behavior:'smooth'});
+  }catch(err){
+    document.getElementById('factMsg').textContent=(err&&err.message==='CUOTA')?'Hoy se alcanzó el límite gratis de lectura. Usa “Factura manual”.':'No pude leer la factura. Prueba una más nítida o usa “Factura manual”.';
+  }finally{ btn.disabled=false; btn.textContent='Leer factura →'; }
+}
+function llenarRevFactura(obj){
+  document.getElementById('fProv').value=obj.proveedor||'';
+  document.getElementById('fNit').value=obj.nit||'';
+  document.getElementById('fNum').value=obj.numero||'';
+  document.getElementById('fFecha').value=obj.fecha?dmyToISO(obj.fecha):todayISO();
+  factRev=(obj.items||[]).map(it=>({producto:it.producto||'',cantidad:it.cantidad,unidad:it.unidad||'',precio:it.precioUnit,total:it.total}));
+  if(!factRev.length) factRev=[{producto:'',cantidad:'',unidad:'',precio:'',total:''}];
+  renderFactItems();
+}
+function renderFactItems(){
+  const b=document.getElementById('factItems'); b.innerHTML='';
+  factRev.forEach((it,i)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML='<td><input list="insumosList" value="'+String(it.producto||'').replace(/"/g,'&quot;')+'" data-i="'+i+'" data-k="producto" style="min-width:150px"></td>'
+      +'<td class="num"><input type="number" step="any" value="'+(it.cantidad!=null?it.cantidad:'')+'" data-i="'+i+'" data-k="cantidad" style="width:70px;text-align:right"></td>'
+      +'<td><input value="'+String(it.unidad||'').replace(/"/g,'&quot;')+'" data-i="'+i+'" data-k="unidad" style="width:62px"></td>'
+      +'<td class="num"><input type="number" step="any" value="'+(it.precio!=null?it.precio:'')+'" data-i="'+i+'" data-k="precio" style="width:92px;text-align:right"></td>'
+      +'<td class="num"><input type="number" step="any" value="'+(it.total!=null?it.total:'')+'" data-i="'+i+'" data-k="total" style="width:92px;text-align:right"></td>'
+      +'<td><button class="ghost sm" data-del="'+i+'">✕</button></td>';
+    b.appendChild(tr);
+  });
+  b.querySelectorAll('input').forEach(inp=>inp.addEventListener('input',()=>{ factRev[inp.dataset.i][inp.dataset.k]=inp.value; factTotal(); }));
+  b.querySelectorAll('[data-del]').forEach(x=>x.addEventListener('click',()=>{ factRev.splice(Number(x.dataset.del),1); if(!factRev.length)factRev=[{producto:'',cantidad:'',unidad:'',precio:'',total:''}]; renderFactItems(); }));
+  factTotal();
+}
+function factTotal(){
+  let t=0; factRev.forEach(it=>{ const v=(it.total!=null&&it.total!=='')?Number(it.total):((Number(it.cantidad)||0)*(Number(it.precio)||0)); if(!isNaN(v))t+=v; });
+  document.getElementById('fTotal').textContent='$'+fmtN(Math.round(t)); return t;
+}
+function facturaManual(){
+  document.getElementById('fProv').value=''; document.getElementById('fNit').value=''; document.getElementById('fNum').value=''; document.getElementById('fFecha').value=todayISO();
+  factRev=[{producto:'',cantidad:'',unidad:'',precio:'',total:''}]; renderFactItems();
+  llenarInsumosList();
+  document.getElementById('secRevFact').hidden=false; document.getElementById('secRevFact').scrollIntoView({behavior:'smooth'});
+}
+async function guardarFactura(){
+  const msg=document.getElementById('factGuardMsg');
+  const prov=document.getElementById('fProv').value.trim();
+  if(!prov){ msg.textContent='Ponle el proveedor'; return; }
+  const items=factRev.filter(it=>String(it.producto||'').trim()).map(it=>({producto:String(it.producto).trim().toUpperCase(),cantidad:num(it.cantidad),unidad:it.unidad||'',precioUnit:num(it.precio),total:num(it.total)}));
+  const total=factTotal();
+  const body={proveedor:prov.toUpperCase(),nit:document.getElementById('fNit').value.trim()||null,numero:document.getElementById('fNum').value.trim()||null,fecha:document.getElementById('fFecha').value||null,total:Math.round(total)||null,items};
+  msg.textContent='Guardando…';
+  try{
+    const r=await fetch(FREST,{method:"POST",headers:Object.assign({},HDRS,{"Prefer":"return=representation"}),body:JSON.stringify(body)});
+    if(!r.ok) throw 0;
+    const rows=await r.json(); const fid=(rows&&rows[0])?rows[0].id:null;
+    if(document.getElementById('fActualizaPrecios').checked){
+      const precios=items.filter(it=>it.precioUnit!=null).map(it=>({insumo:it.producto,proveedor:body.proveedor,unidad:it.unidad,precio:it.precioUnit,fecha:body.fecha,factura_id:fid}));
+      if(precios.length){ try{ await fetch(PREST,{method:"POST",headers:Object.assign({},HDRS,{"Prefer":"return=minimal"}),body:JSON.stringify(precios)}); }catch(e){} }
+    }
+    msg.textContent='✓ Factura guardada';
+    document.getElementById('secRevFact').hidden=true;
+    cargarFacturas();
+  }catch(e){ msg.textContent='Error al guardar'; }
+}
+function renderFacturas(){
+  const q=norm(document.getElementById('buscarFact').value);
+  const list=FACT.filter(f=>{ if(!q)return true; if(norm(f.proveedor).includes(q))return true; return (f.items||[]).some(it=>norm(it.producto).includes(q)); });
+  const byProv={}; let gt=0;
+  FACT.forEach(f=>{ const p=f.proveedor||'—'; byProv[p]=(byProv[p]||0)+(Number(f.total)||0); gt+=Number(f.total)||0; });
+  const provParts=Object.entries(byProv).sort((a,b)=>b[1]-a[1]).slice(0,6).map(e=>e[0]+': <b>$'+fmtN(e[1])+'</b>');
+  document.getElementById('factResumen').innerHTML='Total compras: <b>$'+fmtN(gt)+'</b> · '+FACT.length+' facturas'+(provParts.length?(' · '+provParts.join(' · ')):'');
+  const el=document.getElementById('factList');
+  if(!list.length){ el.innerHTML='<div class="empty">Sin facturas aún. Sube la primera con la foto.</div>'; return; }
+  el.innerHTML='';
+  list.forEach(f=>{
+    const items=f.items||[];
+    const rows=items.map(it=>'<tr><td>'+(it.producto||'')+'</td><td class="num">'+fmtN(it.cantidad,2)+'</td><td>'+(it.unidad||'')+'</td><td class="num">'+(it.precioUnit!=null?'$'+fmtN(it.precioUnit):'')+'</td><td class="num">'+(it.total!=null?'$'+fmtN(it.total):'')+'</td></tr>').join('');
+    const card=document.createElement('div'); card.className='recipe';
+    card.innerHTML='<div class="rhead"><span class="caret">▸</span><div><div class="rname">'+(f.proveedor||'—')+'</div><div class="rmeta">'+(f.fecha||'')+(f.numero?(' · N° '+f.numero):'')+' · '+items.length+' productos</div></div><div class="cost">$'+fmtN(f.total)+'</div><button class="ghost sm btnDelFact" data-delf="'+f.id+'" style="margin-left:8px;align-self:center">✕</button></div>'
+      +'<div class="rbody"><div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>Producto</th><th class="num">Cant.</th><th>Un.</th><th class="num">Precio</th><th class="num">Total</th></tr></thead><tbody>'+(rows||'<tr><td colspan="5" class="empty">Sin detalle</td></tr>')+'</tbody></table></div></div>';
+    card.querySelector('.rhead').addEventListener('click',(e)=>{ if(e.target.closest('[data-delf]'))return; card.classList.toggle('open'); });
+    const db=card.querySelector('[data-delf]'); if(db)db.addEventListener('click',(e)=>{e.stopPropagation();borrarFactura(f.id);});
+    el.appendChild(card);
+  });
+}
+async function borrarFactura(id){
+  if(!confirm('¿Borrar esta factura?'))return;
+  try{ await fetch(FREST+"?id=eq."+id,{method:"DELETE",headers:HDRS}); }catch(e){}
+  FACT=FACT.filter(f=>f.id!==id); renderFacturas();
+}
+(function wireFact(){
+  const g=id=>document.getElementById(id);
+  if(g('btnPickFact'))g('btnPickFact').onclick=()=>g('fileFact').click();
+  if(g('fileFact'))g('fileFact').onchange=e=>{const f=e.target.files[0];if(!f)return;pendingFact=f;g('thumbFact').src=URL.createObjectURL(f);g('previewFact').hidden=false;g('factMsg').textContent='';};
+  if(g('btnQuitaFact'))g('btnQuitaFact').onclick=()=>{pendingFact=null;g('fileFact').value='';g('previewFact').hidden=true;};
+  if(g('btnLeerFact'))g('btnLeerFact').onclick=leerFactura;
+  if(g('btnManualFact'))g('btnManualFact').onclick=facturaManual;
+  if(g('btnAddFactItem'))g('btnAddFactItem').onclick=()=>{factRev.push({producto:'',cantidad:'',unidad:'',precio:'',total:''});renderFactItems();};
+  if(g('btnGuardarFact'))g('btnGuardarFact').onclick=guardarFactura;
+  if(g('buscarFact'))g('buscarFact').addEventListener('input',renderFacturas);
+  if(g('btnRefFact'))g('btnRefFact').addEventListener('click',cargarFacturas);
+})();
 
 /* ===== Login + usuarios ===== */
 const AUTH=SB_URL+"/functions/v1/auth";
