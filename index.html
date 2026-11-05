@@ -1097,7 +1097,7 @@ async function guardarFactura(){
     if(!r.ok) throw 0;
     const rows=await r.json(); const fid=(rows&&rows[0])?rows[0].id:null;
     if(document.getElementById('fActualizaPrecios').checked){
-      const precios=items.filter(it=>it.precioUnit!=null).map(it=>({insumo:it.producto,proveedor:body.proveedor,unidad:it.unidad,precio:it.precioUnit,porciones:it.porciones,unidad_uso:it.unidadUso,precio_uso:it.precioUso,fecha:body.fecha,factura_id:fid}));
+      const precios=items.filter(it=>it.precioUnit!=null||it.precioUso!=null).map(it=>({insumo:it.producto,proveedor:body.proveedor,unidad:it.unidad,precio:it.precioUnit,porciones:it.porciones,unidad_uso:it.unidadUso,precio_uso:it.precioUso,fecha:body.fecha,factura_id:fid}));
       if(precios.length){ try{ await fetch(PREST,{method:"POST",headers:Object.assign({},HDRS,{"Prefer":"return=minimal"}),body:JSON.stringify(precios)}); }catch(e){} }
     }
     msg.textContent='✓ Factura guardada';
