@@ -597,7 +597,8 @@ function costoItemR(ing,qty,un,seen){
   const m=priceOf(key);
   if(m) return Math.round((Number(qty)/uDiv(un))*m.c); // insumo con precio directo
   if(seen&&seen[key]) return null; // evita ciclos (A usa B usa A)
-  const sub=recetasAll().find(x=>norm(x.n)===key); // ¿el ingrediente es otra receta?
+  const aliasName=ALIAS[key]&&ALIAS[key].destName; // emparejamiento a una sub-receta (ej. POLLO DESMECHADO -> FONDO DE POLLO)
+  const sub=recetasAll().find(x=>norm(x.n)===key || (aliasName&&norm(x.n)===norm(aliasName))); // ¿el ingrediente es otra receta?
   if(sub){
     const s2=Object.assign({},seen||{}); s2[key]=true;
     const cc=costoRecetaR(sub.items,s2);
