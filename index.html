@@ -584,8 +584,9 @@ document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
 const uDiv=u=>{u=(u||'').toLowerCase();return (u==='g'||u==='gr'||u==='grs'||u==='ml')?1000:1;};
 let ALIAS={};
 function priceOf(key){
-  if(COSTMAP[key]) return COSTMAP[key];
   const a=ALIAS[key];
+  if(a && a.conf && a.dest && TOTEAT[a.dest]) return TOTEAT[a.dest]; // emparejamiento confirmado manda
+  if(COSTMAP[key]) return COSTMAP[key];
   if(a && a.dest && TOTEAT[a.dest]) return TOTEAT[a.dest];
   if(TOTEAT[key]) return TOTEAT[key];
   return null;
