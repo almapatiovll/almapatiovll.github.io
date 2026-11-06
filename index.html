@@ -546,7 +546,7 @@ function toToteatCSV(){
   const head=["Fecha","Id Producto","Nombre Producto","Cantidad","Unidad","Porciones","Peso final (kg)","Responsable"];
   const lines=[head.join(",")];
   for(const r of rows){const p=pmap[r.codigo]||{};const u=(p.u||"").toUpperCase();const kg=r.peso_final!=null?Math.round(r.peso_final/1000*1000)/1000:null;let cant="",uni=u||"";
-    if(u==="KG"||u==="L"){cant=kg!=null?kg:"";uni=u;}else if(u==="PORC"||u==="UND"){cant=r.porciones!=null?r.porciones:"";uni=u;}else{cant=kg!=null?kg:(r.porciones!=null?r.porciones:"");uni=u||(kg!=null?"KG":"UND");}
+    if(u==="KG"||u==="L"||u==="LT"){cant=kg!=null?kg:"";uni=(u==="L"?"LT":u);}else if(u==="PORC"||u==="UND"){cant=r.porciones!=null?r.porciones:"";uni=u;}else{cant=kg!=null?kg:(r.porciones!=null?r.porciones:"");uni=u||(kg!=null?"KG":"UND");}
     const cells=[r.fecha||"",r.codigo||"",r.preparacion||"",cant,uni,r.porciones??"",kg!=null?kg:"",(r.responsable||"").replace(/,/g," ")];
     lines.push(cells.map(c=>{c=String(c);return c.includes(",")?('"'+c+'"'):c;}).join(","));}
   return "﻿"+lines.join("\n");
@@ -691,7 +691,7 @@ function abrirFormReceta(cod){
   if(w.innerHTML && !editCod){ w.innerHTML=''; return; }
   const rec = editCod ? recetasAll().find(x=>x.c===editCod) : null;
   const titulo = editCod ? ('Editar receta — '+(rec?rec.n:editCod)) : 'Nueva receta';
-  const uopts=['KG','L','UND','PORC'];
+  const uopts=['KG','LT','PORC','UND'];
   w.innerHTML='<div class="rev" style="margin-bottom:12px">'
     +'<div class="rev-head"><b>'+titulo+'</b><button class="ghost sm" id="cerrarForm">✕</button></div>'
     +'<div class="grid"><label class="field full">Nombre<input id="nrNom" placeholder="Ej. SALSA DE LA CASA" value="'+(rec?String(rec.n).replace(/"/g,'&quot;'):'')+'"></label>'
@@ -717,7 +717,7 @@ function addItemRow(pf){
   pf=pf||{};
   const c=document.getElementById('nrItems');
   const d=document.createElement('div'); d.className='ingrow';
-  const uopts=['kg','g','L','Ml','UN','PORC'];
+  const uopts=['KG','LT','PORC','UND'];
   d.innerHTML='<input list="ingList" class="ni-ing" placeholder="Ingrediente" value="'+String(pf.i||'').replace(/"/g,'&quot;')+'">'
     +'<input class="ni-q" type="number" step="any" placeholder="Cant" value="'+(pf.q!=null?pf.q:'')+'">'
     +'<select class="ni-u">'+uopts.map(u=>'<option '+(String(pf.u||'').toLowerCase()===u.toLowerCase()?'selected':'')+'>'+u+'</option>').join('')+'</select>'
@@ -859,7 +859,7 @@ function abrirFormInv(){
     +'<div class="grid">'
     +'<label class="field">Tipo<select id="iTipo"><option value="preparacion">Receta / preparación</option><option value="insumo">Insumo</option><option value="manual">Manual</option></select></label>'
     +'<label class="field full">Producto<input id="iNom" list="itemList" placeholder="Escribe o elige"></label>'
-    +'<label class="field">Unidad<select id="iUn"><option>kg</option><option>g</option><option>L</option><option>Ml</option><option>UND</option><option>PORC</option></select></label>'
+    +'<label class="field">Unidad<select id="iUn"><option>KG</option><option>LT</option><option>PORC</option><option>UND</option></select></label>'
     +'<label class="field">Costo unitario<input id="iCosto" type="number" step="any" placeholder="0"></label>'
     +'</div><datalist id="itemList"></datalist>'
     +'<div class="row" style="margin-top:10px"><button class="primary" id="iGuardar">Agregar</button><span class="muted" id="iMsg" style="font-size:.8rem"></span></div>'
