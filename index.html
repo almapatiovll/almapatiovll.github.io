@@ -1290,10 +1290,10 @@ function renderFacturas(){
   el.innerHTML='';
   list.forEach(f=>{
     const items=f.items||[];
-    const rows=items.map(it=>'<tr><td>'+(it.producto||'')+'</td><td class="num">'+fmtN(it.cantidad,2)+'</td><td>'+(it.unidad||'')+'</td><td class="num">'+(it.precioUnit!=null?'$'+fmtN(it.precioUnit):'')+'</td><td class="num">'+(it.precioUso!=null?('$'+fmtN(it.precioUso)+'/'+(it.unidadUso||'und')):'')+'</td><td class="num">'+(it.total!=null?'$'+fmtN(it.total):'')+'</td></tr>').join('');
+    const rows=items.map(it=>'<tr><td>'+(it.producto||'')+'</td><td class="num">'+fmtN(it.cantidad,2)+'</td><td>'+(it.unidad||'')+'</td><td class="num">'+(it.precioUnit!=null?'$'+fmtN(it.precioUnit):'')+'</td><td class="num">'+(it.porciones!=null?fmtN(it.porciones):'')+'</td><td class="num">'+(it.precioUso!=null?('$'+fmtN(it.precioUso)+'/'+(it.unidadUso||'und')):'')+'</td><td class="num">'+(it.total!=null?'$'+fmtN(it.total):'')+'</td></tr>').join('');
     const card=document.createElement('div'); card.className='recipe';
     card.innerHTML='<div class="rhead"><span class="caret">▸</span><div><div class="rname">'+(f.proveedor||'—')+'</div><div class="rmeta">'+(f.fecha||'')+(f.numero?(' · N° '+f.numero):'')+' · '+items.length+' productos</div></div><div class="cost">$'+fmtN(f.total)+'</div><button class="ghost sm btnDelFact" data-delf="'+f.id+'" style="margin-left:8px;align-self:center">✕</button></div>'
-      +'<div class="rbody"><div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>Producto</th><th class="num">Cant.</th><th>Un.</th><th class="num">Precio</th><th class="num">$ / unidad</th><th class="num">Total</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6" class="empty">Sin detalle</td></tr>')+'</tbody></table></div></div>';
+      +'<div class="rbody"><div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>Producto</th><th class="num">Cant.</th><th>Un.</th><th class="num">Precio</th><th class="num">Unidades</th><th class="num">$ / unidad</th><th class="num">Total</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7" class="empty">Sin detalle</td></tr>')+'</tbody></table></div></div>';
     card.querySelector('.rhead').addEventListener('click',(e)=>{ if(e.target.closest('[data-delf]'))return; card.classList.toggle('open'); });
     const db=card.querySelector('[data-delf]'); if(db)db.addEventListener('click',(e)=>{e.stopPropagation();borrarFactura(f.id);});
     el.appendChild(card);
