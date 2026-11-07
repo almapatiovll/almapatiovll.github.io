@@ -251,6 +251,10 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
   </div><!-- /panel-prod -->
 
   <div id="panel-recetas" hidden>
+    <div class="row" id="recvNav" style="margin:0 0 12px 0;gap:6px">
+      <button class="primary sm" data-rv="preparacion">🧪 Preparaciones</button>
+      <button class="ghost sm" data-rv="plato">🍽️ Platos</button>
+    </div>
     <section class="card" id="secEmparejar" hidden style="border-top:4px solid var(--blue)">
       <div class="rev-head">
         <div><h2>🔗 Emparejar insumos con Toteat</h2><p class="sub">Confirma el nombre oficial de cada insumo. Las recetas no cambian; solo se unifican los nombres para que todo cruce con inventario y precios.</p></div>
@@ -603,7 +607,18 @@ function priceOf(key){
   if(TOTEAT[key]) return TOTEAT[key];
   return null;
 }
-let recCat='TODAS', prodCat='TODAS';
+let recCat='TODAS', prodCat='TODAS', recView='preparacion';
+function setRecView(v){ recView=v; recCat='TODAS'; document.querySelectorAll('#recvNav [data-rv]').forEach(b=>b.className=(b.dataset.rv===v?'primary sm':'ghost sm')); renderRecetas(); }
+async function moverTipo(cod,tipo,btn){
+  if(btn)btn.disabled=true;
+  const r=recetasAll().find(x=>x.c===cod); if(!r){if(btn)btn.disabled=false;return;}
+  const body={codigo:cod,nombre:r.n,categoria:(r.esEdit?'EDITADA':(r.nueva?'NUEVA':'EDITADA')),unidad:r.u||'',rend:r.rend,ingredientes:r.items||[],pasos:pasosDe(cod),costo:costoReceta(r.items).tot,origen:'nueva',tipo:tipo};
+  try{
+    const res=await fetch(RREST+"?on_conflict=codigo",{method:"POST",headers:Object.assign({},HDRS,{"Prefer":"resolution=merge-duplicates,return=minimal"}),body:JSON.stringify(body)});
+    if(!res.ok)throw 0;
+    await cargarRecetas();
+  }catch(e){ if(btn){btn.disabled=false;btn.textContent='Error';} }
+}
 function catOf(nombre){ const p=PRODS.find(x=>norm(x.n)===norm(nombre)); return (p&&p.cat)?p.cat:'OTRAS'; }
 function catOfProd(r){ let p=PRODS.find(x=>x.c===r.codigo)||PRODS.find(x=>norm(x.n)===norm(r.preparacion||'')); return (p&&p.cat)?p.cat:'OTRAS'; }
 function chipRow(container,cats,active,onPick){
@@ -710,7 +725,7 @@ function pasosDe(cod){ const row=REC_DB.find(x=>x.codigo===cod); return row&&row
 function recetasAll(){
   const over={};
   REC_DB.filter(x=>x.origen==='nueva').forEach(x=>{
-    over[x.codigo]={c:x.codigo,n:x.nombre,u:x.unidad,rend:x.rend,items:(x.ingredientes||[]),cost:x.costo,nueva:true};
+    over[x.codigo]={c:x.codigo,n:x.nombre,u:x.unidad,rend:x.rend,items:(x.ingredientes||[]),cost:x.costo,nueva:true,tipo:(x.tipo||'preparacion')};
   });
   const baseCodes=new Set(RECETAS.map(r=>r.c));
   const base=RECETAS.map(r=> over[r.c]?Object.assign({},over[r.c],{esEdit:true}):r );
@@ -719,20 +734,19 @@ function recetasAll(){
 }
 function renderRecetas(){
   const q=norm(document.getElementById('buscarRec').value);
-  const allR=recetasAll();
-  const cats=[...new Set(allR.map(r=>catOf(r.n)))].sort();
+  const viewR=recetasAll().filter(r=>(r.tipo||'preparacion')===recView);
+  const cats=[...new Set(viewR.map(r=>catOf(r.n)))].sort();
   chipRow('recCatChips',cats,recCat,(c)=>{recCat=c;renderRecetas();});
-  const list=allR.filter(r=>{
+  const list=viewR.filter(r=>{
     if(recCat!=='TODAS' && catOf(r.n)!==recCat) return false;
     if(!q)return true;
     if(norm(r.n).includes(q))return true;
     return (r.items||[]).some(it=>norm(it.i||it.ing).includes(q));
   });
-  const full=RECETAS.filter(r=>r.cost!=null&&(!r.miss||r.miss.length===0)).length;
   document.getElementById('recNota').textContent=
-    RECETAS.length+' recetas base · '+full+' con costo completo. El costo es estimado (ingrediente × precio del maestro). Los pasos los cargas tú y quedan guardados.';
+    (recView==='plato'?'Platos del menú':'Preparaciones (salsas, fondos, adobos, guarniciones…)')+' · '+viewR.length+' en esta vista. El costo es estimado (ingrediente × precio real). Las preparaciones ruedan dentro de los platos.';
   const el=document.getElementById('recList');
-  if(!list.length){el.innerHTML='<div class="empty">Sin resultados.</div>';return;}
+  if(!list.length){el.innerHTML='<div class="empty">Sin recetas en esta vista. Usa “+ Nueva receta”, o mueve una con el botón de la tarjeta.</div>';return;}
   el.innerHTML='';
   for(const r of list){
     const items=r.items||[];
@@ -759,13 +773,14 @@ function renderRecetas(){
       +((cc.falta&&cc.falta.length)?('<p class="sub" style="color:var(--warn-ink);margin-top:8px">Faltan precios: '+cc.falta.join(', ')+'</p>'):'')
       +'<label class="field" style="margin-top:12px">Pasos de preparación'
       +'<textarea class="pasos" data-cod="'+r.c+'" placeholder="Escribe los pasos…">'+pasosDe(r.c)+'</textarea></label>'
-      +'<div class="row" style="margin-top:8px"><button class="primary sm btnPasos" data-cod="'+r.c+'">Guardar pasos</button><button class="ghost sm btnEditRec" data-cod="'+r.c+'">✏ Editar ingredientes / rinde</button><span class="muted okp" style="font-size:.8rem"></span></div>'
+      +'<div class="row" style="margin-top:8px"><button class="primary sm btnPasos" data-cod="'+r.c+'">Guardar pasos</button><button class="ghost sm btnEditRec" data-cod="'+r.c+'">✏ Editar ingredientes / rinde</button><button class="ghost sm btnMoverTipo" data-cod="'+r.c+'" data-to="'+(recView==='plato'?'preparacion':'plato')+'">'+(recView==='plato'?'↩ Mover a Preparaciones':'🍽️ Mover a Platos')+'</button><span class="muted okp" style="font-size:.8rem"></span></div>'
       +'</div>';
     card.querySelector('.rhead').addEventListener('click',()=>card.classList.toggle('open'));
     el.appendChild(card);
   }
   el.querySelectorAll('.btnPasos').forEach(b=>b.addEventListener('click',()=>guardarPasos(b)));
   el.querySelectorAll('.btnEditRec').forEach(b=>b.addEventListener('click',(ev)=>{ev.stopPropagation();abrirFormReceta(b.dataset.cod);}));
+  el.querySelectorAll('.btnMoverTipo').forEach(b=>b.addEventListener('click',(ev)=>{ev.stopPropagation();moverTipo(b.dataset.cod,b.dataset.to,b);}));
 }
 async function guardarPasos(btn){
   const cod=btn.dataset.cod;
@@ -853,7 +868,8 @@ async function guardarReceta(){
   const code = editCod || ('NUE-'+Date.now().toString(36).toUpperCase());
   const body={codigo:code,nombre:nom.toUpperCase(),categoria:(editCod?'EDITADA':'NUEVA'),
     unidad:document.getElementById('nrUn').value,rend:parseFloat(document.getElementById('nrRend').value)||null,
-    ingredientes:items,pasos:document.getElementById('nrPasos').value,costo:cc.tot,origen:'nueva'};
+    ingredientes:items,pasos:document.getElementById('nrPasos').value,costo:cc.tot,origen:'nueva',
+    tipo:(editCod?((recetasAll().find(x=>x.c===editCod)||{}).tipo||'preparacion'):recView)};
   msg.textContent='Guardando…';
   try{
     const r=await fetch(RREST+"?on_conflict=codigo",{method:"POST",headers:Object.assign({},HDRS,{"Prefer":"resolution=merge-duplicates,return=minimal"}),body:JSON.stringify(body)});
@@ -867,6 +883,7 @@ async function guardarReceta(){
 }
 document.getElementById('buscarRec').addEventListener('input',renderRecetas);
 document.getElementById('btnRefRec').addEventListener('click',cargarRecetas);
+document.querySelectorAll('#recvNav [data-rv]').forEach(b=>b.addEventListener('click',()=>setRecView(b.dataset.rv)));
 (function(){const g=id=>document.getElementById(id);
   if(g('empConfAll'))g('empConfAll').addEventListener('click',confirmarTodasSugeridas);
   if(g('empToggle'))g('empToggle').addEventListener('click',()=>{const l=g('empList');const show=l.style.display==='none';l.style.display=show?'':'none';g('empToggle').textContent=show?'Ocultar':'Mostrar';});
