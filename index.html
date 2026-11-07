@@ -359,7 +359,7 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
         <label class="field">Fecha<input id="fFecha" type="date"></label>
       </div>
       <div class="tablewrap" style="margin-top:12px"><table>
-        <thead><tr><th>Producto</th><th class="num">Cant.</th><th>Unidad</th><th class="num">Precio unit.</th><th class="num">Porc/Und que llegaron</th><th class="num">$ / porción</th><th class="num">Total</th><th></th></tr></thead>
+        <thead><tr><th>Producto</th><th class="num">Cant.</th><th>Unidad</th><th class="num">Precio unit.</th><th class="num">Unidades / piezas que llegaron</th><th class="num">$ / unidad</th><th class="num">Total</th><th></th></tr></thead>
         <tbody id="factItems"></tbody>
         <tfoot><tr><th colspan="6" style="text-align:right">Total factura</th><th class="num" id="fTotal">$0</th><th></th></tr></tfoot>
       </table></div>
@@ -1227,7 +1227,7 @@ function renderFactItems(){
       +'<td class="num"><input type="number" step="any" value="'+(it.cantidad!=null?it.cantidad:'')+'" data-i="'+i+'" data-k="cantidad" style="width:64px;text-align:right"></td>'
       +'<td><input value="'+String(it.unidad||'').replace(/"/g,'&quot;')+'" data-i="'+i+'" data-k="unidad" style="width:56px" title="unidad de compra (kg, L, und...)"></td>'
       +'<td class="num"><input type="number" step="any" value="'+(it.precio!=null?it.precio:'')+'" data-i="'+i+'" data-k="precio" style="width:88px;text-align:right" title="precio por la unidad de compra"></td>'
-      +'<td class="num"><input type="number" step="any" placeholder="—" value="'+(it.porc!=null?it.porc:'')+'" data-i="'+i+'" data-k="porc" style="width:76px;text-align:right" title="cuántas porciones/unidades salieron de lo que llegó (lo que cuentan)"></td>'
+      +'<td class="num"><input type="number" step="any" placeholder="—" value="'+(it.porc!=null?it.porc:'')+'" data-i="'+i+'" data-k="porc" style="width:76px;text-align:right" title="cuántas unidades/piezas llegaron (ej. 120 mojarras en 50 kg)"></td>'
       +'<td class="num costuso" style="font-weight:600;color:var(--brand-ink,#1f3a2e)">'+(pu!=null?('$'+fmtN(pu)):'<span class="muted">—</span>')+'</td>'
       +'<td class="num"><input type="number" step="any" value="'+(it.total!=null?it.total:'')+'" data-i="'+i+'" data-k="total" style="width:88px;text-align:right"></td>'
       +'<td><button class="ghost sm" data-del="'+i+'">✕</button></td>';
@@ -1293,7 +1293,7 @@ function renderFacturas(){
     const rows=items.map(it=>'<tr><td>'+(it.producto||'')+'</td><td class="num">'+fmtN(it.cantidad,2)+'</td><td>'+(it.unidad||'')+'</td><td class="num">'+(it.precioUnit!=null?'$'+fmtN(it.precioUnit):'')+'</td><td class="num">'+(it.precioUso!=null?('$'+fmtN(it.precioUso)+'/'+(it.unidadUso||'und')):'')+'</td><td class="num">'+(it.total!=null?'$'+fmtN(it.total):'')+'</td></tr>').join('');
     const card=document.createElement('div'); card.className='recipe';
     card.innerHTML='<div class="rhead"><span class="caret">▸</span><div><div class="rname">'+(f.proveedor||'—')+'</div><div class="rmeta">'+(f.fecha||'')+(f.numero?(' · N° '+f.numero):'')+' · '+items.length+' productos</div></div><div class="cost">$'+fmtN(f.total)+'</div><button class="ghost sm btnDelFact" data-delf="'+f.id+'" style="margin-left:8px;align-self:center">✕</button></div>'
-      +'<div class="rbody"><div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>Producto</th><th class="num">Cant.</th><th>Un.</th><th class="num">Precio</th><th class="num">$ / porción</th><th class="num">Total</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6" class="empty">Sin detalle</td></tr>')+'</tbody></table></div></div>';
+      +'<div class="rbody"><div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>Producto</th><th class="num">Cant.</th><th>Un.</th><th class="num">Precio</th><th class="num">$ / unidad</th><th class="num">Total</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6" class="empty">Sin detalle</td></tr>')+'</tbody></table></div></div>';
     card.querySelector('.rhead').addEventListener('click',(e)=>{ if(e.target.closest('[data-delf]'))return; card.classList.toggle('open'); });
     const db=card.querySelector('[data-delf]'); if(db)db.addEventListener('click',(e)=>{e.stopPropagation();borrarFactura(f.id);});
     el.appendChild(card);
