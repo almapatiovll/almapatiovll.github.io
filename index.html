@@ -674,25 +674,33 @@ async function cargarAlias(){
   ALIAS={}; ALIAS_ROWS.forEach(a=>{ ALIAS[norm(a.origen)]={dest:a.destino?norm(a.destino):null,destName:a.destino||'',conf:!!a.confirmado}; });
 }
 function escH(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');}
+function prepNames(){ return recetasAll().filter(r=>(r.tipo||'preparacion')==='preparacion').map(r=>r.n).sort((a,b)=>a.localeCompare(b)); }
+function empCostLabel(val){
+  if(!val) return 'elegir…';
+  const t=TOTEAT[norm(val)]; if(t) return '$'+fmtN(t.c)+'/'+t.b+' (insumo)';
+  const r=recetasAll().find(x=>norm(x.n)===norm(val)); if(r) return 'preparación (sub-receta)';
+  return 'sin precio';
+}
 function renderEmparejar(){
   const sec=document.getElementById('secEmparejar'); if(!sec)return;
-  const pend=ALIAS_ROWS.filter(a=>!a.confirmado);
+  const recNames=new Set(recetasAll().filter(r=>(r.tipo||'preparacion')==='preparacion').map(r=>norm(r.n)));
+  const pend=ALIAS_ROWS.filter(a=>!a.confirmado && !recNames.has(norm(a.origen)));
   if(!pend.length){ sec.hidden=true; return; }
   sec.hidden=false;
-  const opts=toteatNames();
+  const ins=toteatNames(), preps=prepNames();
+  const optsHtml=(dest)=>'<option value="">— elegir —</option>'
+    +'<optgroup label="Insumos de Toteat">'+ins.map(n=>'<option '+(n===dest?'selected':'')+'>'+escH(n)+'</option>').join('')+'</optgroup>'
+    +'<optgroup label="Preparaciones (sub-recetas)">'+preps.map(n=>'<option '+(n===dest?'selected':'')+'>'+escH(n)+'</option>').join('')+'</optgroup>';
   const el=document.getElementById('empList');
   el.innerHTML=pend.map(a=>{
-    const t=a.destino?TOTEAT[norm(a.destino)]:null;
-    const cost=t?('$'+fmtN(t.c)+'/'+t.b):'sin precio';
-    const sel='<select class="empSel" style="width:100%"><option value="">— elegir insumo de Toteat —</option>'+opts.map(n=>'<option '+(n===a.destino?'selected':'')+'>'+escH(n)+'</option>').join('')+'</select>';
     return '<div class="row empRow" data-o="'+escH(a.origen)+'" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:8px 0;gap:8px">'
-      +'<div style="min-width:120px;flex:1"><b>'+escH(a.origen)+'</b><div class="muted empCost" style="font-size:.76rem">'+cost+'</div></div>'
-      +'<div style="flex:1.4;min-width:150px">'+sel+'</div>'
+      +'<div style="min-width:120px;flex:1"><b>'+escH(a.origen)+'</b><div class="muted empCost" style="font-size:.76rem">'+empCostLabel(a.destino)+'</div></div>'
+      +'<div style="flex:1.4;min-width:150px"><select class="empSel" style="width:100%">'+optsHtml(a.destino)+'</select></div>'
       +'<button class="primary sm empOk">✓</button></div>';
   }).join('');
   el.querySelectorAll('.empRow').forEach(row=>{
     const s=row.querySelector('.empSel');
-    s.addEventListener('change',()=>{ const t=s.value?TOTEAT[norm(s.value)]:null; row.querySelector('.empCost').textContent=t?('$'+fmtN(t.c)+'/'+t.b):'sin precio'; });
+    s.addEventListener('change',()=>{ row.querySelector('.empCost').textContent=empCostLabel(s.value); });
     row.querySelector('.empOk').addEventListener('click',()=>confirmarAlias(row.dataset.o,s.value,row.querySelector('.empOk')));
   });
   const msg=document.getElementById('empMsg'); if(msg)msg.textContent=pend.length+' por confirmar';
