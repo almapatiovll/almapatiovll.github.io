@@ -113,6 +113,9 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
 .tab.active[data-panel="inventario"]{color:#b32b22;background:rgba(226,58,46,.14);box-shadow:inset 0 0 0 1.5px rgba(226,58,46,.45)}
 .tab.active[data-panel="facturas"]{color:#0f7fb0;background:rgba(27,163,219,.15);box-shadow:inset 0 0 0 1.5px rgba(27,163,219,.5)}
 .garland{height:6px;border-radius:999px;margin:14px 0 0;background:linear-gradient(90deg,var(--orange) 0 25%,var(--leaf) 25% 50%,var(--red) 50% 75%,var(--blue) 75% 100%)}
+.chipF{background:var(--chip);border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:.78rem;font-weight:700;color:var(--muted);cursor:pointer;transition:background .12s,color .12s}
+.chipF.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+.chipF:hover{color:var(--brand)}.chipF.on:hover{color:#fff}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
@@ -220,6 +223,7 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
       <input id="fHasta" type="date" style="width:auto">
       <button class="ghost sm" id="btnRefresh">↻</button>
     </div>
+    <div class="row" id="prodCatChips" style="gap:6px;margin:-2px 0 10px;flex-wrap:wrap"></div>
     <div class="totbar" id="totbar"></div>
     <div class="tablewrap">
       <table>
@@ -264,6 +268,7 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
         <input id="buscarRec" placeholder="Buscar receta o ingrediente…" style="flex:1;min-width:160px">
         <button class="ghost sm" id="btnRefRec">↻</button>
       </div>
+      <div class="row" id="recCatChips" style="gap:6px;margin:0 0 10px;flex-wrap:wrap"></div>
       <div id="recFormWrap"></div>
       <div class="banner info" id="recNota" style="margin:4px 0 10px"></div>
       <div id="recList" style="display:flex;flex-direction:column;gap:10px"><div class="empty">Cargando recetas…</div></div>
@@ -365,7 +370,10 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
     <section class="card" id="secFactList">
       <div class="rev-head"><div><h2>Facturas guardadas</h2><p class="sub">Tu base de compras por proveedor.</p></div></div>
       <div class="row" style="margin:12px 0">
-        <input id="buscarFact" placeholder="Buscar proveedor o producto…" style="flex:1;min-width:140px">
+        <input id="buscarFact" placeholder="Buscar producto…" style="flex:1;min-width:120px">
+        <select id="factProvF" style="width:auto"><option value="">Todos los proveedores</option></select>
+        <label class="field" style="width:auto">Desde<input id="factDesde" type="date"></label>
+        <label class="field" style="width:auto">Hasta<input id="factHasta" type="date"></label>
         <button class="ghost sm" id="btnRefFact">↻</button>
       </div>
       <div class="totbar" id="factResumen"></div>
@@ -376,6 +384,8 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
       <div class="rev-head"><div><h2>Proveedores — histórico</h2><p class="sub">Cada proveedor con todas sus facturas, el total comprado y la evolución de precios por producto. Toca para ver el detalle.</p></div></div>
       <div class="row" style="margin:12px 0">
         <input id="buscarProv" placeholder="Buscar proveedor…" style="flex:1;min-width:140px">
+        <label class="field" style="width:auto">Desde<input id="provDesde" type="date"></label>
+        <label class="field" style="width:auto">Hasta<input id="provHasta" type="date"></label>
         <button class="ghost sm" id="btnRefProv">↻</button>
       </div>
       <div class="totbar" id="provResumen"></div>
@@ -532,9 +542,11 @@ async function guardar(){
 
 function filtered(){
   const q=norm($("buscar").value),d1=$("fDesde").value,d2=$("fHasta").value;
-  return saved.filter(r=>{if(d1&&(r.fecha||"")<d1)return false;if(d2&&(r.fecha||"")>d2)return false;if(q){const hay=norm((r.preparacion||"")+" "+(r.codigo||"")+" "+(r.responsable||""));if(!hay.includes(q))return false;}return true;});
+  return saved.filter(r=>{if(d1&&(r.fecha||"")<d1)return false;if(d2&&(r.fecha||"")>d2)return false;if(prodCat!=='TODAS'&&catOfProd(r)!==prodCat)return false;if(q){const hay=norm((r.preparacion||"")+" "+(r.codigo||"")+" "+(r.responsable||""));if(!hay.includes(q))return false;}return true;});
 }
 function renderTable(){
+  const cats=[...new Set((saved||[]).map(r=>catOfProd(r)))].sort();
+  chipRow('prodCatChips',cats,prodCat,(c)=>{prodCat=c;renderTable();});
   const rows=filtered(),tb=$("tbody");
   if(!saved.length){tb.innerHTML=`<tr><td colspan="12"><div class="empty" id="emptyRow">Aún no hay producciones. Sube una foto o agrega una fila para empezar.</div></td></tr>`;$("totbar").innerHTML="";return;}
   if(!rows.length){tb.innerHTML=`<tr><td colspan="12"><div class="empty">Nada coincide con el filtro.</div></td></tr>`;}
@@ -590,6 +602,15 @@ function priceOf(key){
   if(a && a.dest && TOTEAT[a.dest]) return TOTEAT[a.dest];
   if(TOTEAT[key]) return TOTEAT[key];
   return null;
+}
+let recCat='TODAS', prodCat='TODAS';
+function catOf(nombre){ const p=PRODS.find(x=>norm(x.n)===norm(nombre)); return (p&&p.cat)?p.cat:'OTRAS'; }
+function catOfProd(r){ let p=PRODS.find(x=>x.c===r.codigo)||PRODS.find(x=>norm(x.n)===norm(r.preparacion||'')); return (p&&p.cat)?p.cat:'OTRAS'; }
+function chipRow(container,cats,active,onPick){
+  const el=document.getElementById(container); if(!el)return;
+  const all=['TODAS'].concat(cats);
+  el.innerHTML=all.map(c=>'<button class="chipF'+(c===active?' on':'')+'" data-c="'+String(c).replace(/"/g,'&quot;')+'">'+(c==='TODAS'?'Todas':c)+'</button>').join('');
+  el.querySelectorAll('.chipF').forEach(b=>b.addEventListener('click',()=>onPick(b.dataset.c)));
 }
 function costoItemR(ing,qty,un,seen){
   if(qty==null||qty===''||isNaN(qty))return null;
@@ -698,7 +719,11 @@ function recetasAll(){
 }
 function renderRecetas(){
   const q=norm(document.getElementById('buscarRec').value);
-  const list=recetasAll().filter(r=>{
+  const allR=recetasAll();
+  const cats=[...new Set(allR.map(r=>catOf(r.n)))].sort();
+  chipRow('recCatChips',cats,recCat,(c)=>{recCat=c;renderRecetas();});
+  const list=allR.filter(r=>{
+    if(recCat!=='TODAS' && catOf(r.n)!==recCat) return false;
     if(!q)return true;
     if(norm(r.n).includes(q))return true;
     return (r.items||[]).some(it=>norm(it.i||it.ing).includes(q));
@@ -1089,6 +1114,8 @@ async function cargarFacturas(){
   llenarInsumosList();
   try{ const r=await fetch(FREST+"?select=*&order=fecha.desc,creado_en.desc&limit=500",{headers:HDRS}); FACT=r.ok?await r.json():[]; }catch(e){ FACT=[]; }
   try{ const rp=await fetch(PREST+"?select=insumo,g_por_unidad,unidad_uso&order=fecha.desc.nullslast,creado_en.desc&limit=3000",{headers:HDRS}); const arr=rp.ok?await rp.json():[]; CONV={}; arr.forEach(x=>{ const k=norm(x.insumo); if(!(k in CONV)&&x.g_por_unidad!=null) CONV[k]={g:x.g_por_unidad,uso:x.unidad_uso||'UND'}; }); }catch(e){}
+  const sel=document.getElementById('factProvF');
+  if(sel){ const cur=sel.value; const provs=[...new Set(FACT.map(f=>f.proveedor).filter(Boolean))].sort(); sel.innerHTML='<option value="">Todos los proveedores</option>'+provs.map(p=>'<option'+(p===cur?' selected':'')+'>'+escH(p)+'</option>').join(''); }
   renderFacturas();
   if(factView==='proveedores') renderProveedores();
 }
@@ -1104,8 +1131,10 @@ function setFactView(v){
 }
 function renderProveedores(){
   const q=norm((document.getElementById('buscarProv')||{}).value||'');
+  const d1=(document.getElementById('provDesde')||{}).value, d2=(document.getElementById('provHasta')||{}).value;
   const prov={};
   FACT.forEach(f=>{
+    if(d1&&(f.fecha||'')<d1) return; if(d2&&(f.fecha||'')>d2) return;
     const p=f.proveedor||'—';
     const o=prov[p]||(prov[p]={nombre:p,total:0,fac:[],prods:{},ult:''});
     o.total+=Number(f.total)||0; o.fac.push(f);
@@ -1220,7 +1249,13 @@ async function guardarFactura(){
 }
 function renderFacturas(){
   const q=norm(document.getElementById('buscarFact').value);
-  const list=FACT.filter(f=>{ if(!q)return true; if(norm(f.proveedor).includes(q))return true; return (f.items||[]).some(it=>norm(it.producto).includes(q)); });
+  const provF=(document.getElementById('factProvF')||{}).value||'';
+  const d1=(document.getElementById('factDesde')||{}).value, d2=(document.getElementById('factHasta')||{}).value;
+  const list=FACT.filter(f=>{
+    if(provF && f.proveedor!==provF) return false;
+    if(d1&&(f.fecha||'')<d1) return false;
+    if(d2&&(f.fecha||'')>d2) return false;
+    if(!q)return true; if(norm(f.proveedor).includes(q))return true; return (f.items||[]).some(it=>norm(it.producto).includes(q)); });
   const byProv={}; let gt=0;
   FACT.forEach(f=>{ const p=f.proveedor||'—'; byProv[p]=(byProv[p]||0)+(Number(f.total)||0); gt+=Number(f.total)||0; });
   const provParts=Object.entries(byProv).sort((a,b)=>b[1]-a[1]).slice(0,6).map(e=>e[0]+': <b>$'+fmtN(e[1])+'</b>');
@@ -1254,6 +1289,9 @@ async function borrarFactura(id){
   if(g('btnAddFactItem'))g('btnAddFactItem').onclick=()=>{factRev.push({producto:'',cantidad:'',unidad:'',precio:'',total:''});renderFactItems();};
   if(g('btnGuardarFact'))g('btnGuardarFact').onclick=guardarFactura;
   if(g('buscarFact'))g('buscarFact').addEventListener('input',renderFacturas);
+  if(g('factProvF'))g('factProvF').addEventListener('change',renderFacturas);
+  ['factDesde','factHasta'].forEach(id=>{const e=g(id);if(e)e.addEventListener('change',renderFacturas);});
+  ['provDesde','provHasta'].forEach(id=>{const e=g(id);if(e)e.addEventListener('change',renderProveedores);});
   if(g('btnRefFact'))g('btnRefFact').addEventListener('click',cargarFacturas);
   document.querySelectorAll('#fvNav [data-fv]').forEach(b=>b.addEventListener('click',()=>setFactView(b.dataset.fv)));
   if(g('buscarProv'))g('buscarProv').addEventListener('input',renderProveedores);
