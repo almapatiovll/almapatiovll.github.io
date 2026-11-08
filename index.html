@@ -516,7 +516,7 @@ function fieldsHTML(row){
   } else if(tipo==='receta'){
     h+=fld('N° recetas','recetas',row.recetas)+fld('Rinde total (g)','pesoF',row.pesoF); shown.add('recetas'); shown.add('pesoF');
   } else if(tipo==='rinde'){
-    h+=fld('Peso inicial (g)','pesoI',row.pesoI)+fld('Peso final (g)','pesoF',row.pesoF); shown.add('pesoI'); shown.add('pesoF');
+    h+=fld('Peso x porción (g)','pesoPorcion',row.pesoPorcion)+fld('N° porciones','porciones',row.porciones); shown.add('pesoPorcion'); shown.add('porciones');
   } else {
     h+=fld('Peso inicial (g)','pesoI',row.pesoI)+fld('Porciones','porciones',row.porciones)+fld('Peso final (g)','pesoF',row.pesoF);
     shown.add('pesoI'); shown.add('porciones'); shown.add('pesoF');
@@ -569,6 +569,13 @@ function calcRow(row,el){
     box.innerHTML=!row.code?`<span class="pill warn">falta elegir la producción</span>`:(parts.join(" · ")||"<span class='muted'>ingresa recetas y rinde</span>");
     return;
   }
+  if(captura(row.code)==='rinde'){
+    const pp=parseFloat(row.pesoPorcion),por=parseFloat(row.porciones);
+    if(!isNaN(pp)&&!isNaN(por))parts.push(`${por} porciones × ${fmtN(pp)} g = <b>${fmtN(pp*por)} g</b>`);
+    parts.push("<span class='muted'>el rinde y el costo los calcula la app con el peso de la factura</span>");
+    box.innerHTML=!row.code?`<span class="pill warn">falta elegir la producción</span>`:parts.join(" · ");
+    return;
+  }
   const i=parseFloat(row.pesoI),f=parseFloat(row.pesoF);
   if(!isNaN(i)&&!isNaN(f)){const merma=i-f,rend=f/i;parts.push(`merma <b>${fmtN(merma)} g</b>`);const cls=rend>=0.95?"ok":(rend>=0.5?"warn":"bad");parts.push(`rendimiento <span class="pill ${cls}">${(rend*100).toFixed(0)}%</span>`);if(p&&p.pct)parts.push(`esperado ~${(p.pct*100).toFixed(0)}%`);}
   const por=parseFloat(row.porciones);if(!isNaN(f)&&!isNaN(por)&&por>0)parts.push(`${fmtN(f/por,0)} g/porción`);
@@ -589,12 +596,15 @@ async function guardar(){
           responsable:r.responsable||null,nota:(r.nota?r.nota+" · ":"")+"desde paca"+(paca?" "+fmtN(paca)+"g":""),origen:r.leido?"foto":"manual"});}});
       return;
     }
-    const p=PRODS.find(x=>x.c===r.code)||{};const i=parseFloat(r.pesoI),f=parseFloat(r.pesoF);
+    const p=PRODS.find(x=>x.c===r.code)||{};const i=parseFloat(r.pesoI);
+    let pfinal = r.pesoF===""?null:Number(r.pesoF);
+    if(captura(r.code)==='rinde' && pfinal===null && r.pesoPorcion!=="" && r.porciones!=="") pfinal=Number(r.pesoPorcion)*Number(r.porciones);
+    const f=pfinal;
     payload.push({fecha:r.fecha||todayISO(),codigo:p.c,preparacion:p.n,categoria:p.cat,unidad:p.u||null,
       recetas:r.recetas===""?null:Number(r.recetas),peso_inicial:r.pesoI===""?null:Number(r.pesoI),
-      peso_final:r.pesoF===""?null:Number(r.pesoF),peso_porcion:r.pesoPorcion===""?null:Number(r.pesoPorcion),
-      porciones:r.porciones===""?null:Number(r.porciones),merma:(!isNaN(i)&&!isNaN(f))?(i-f):null,
-      rendimiento:(!isNaN(i)&&!isNaN(f)&&i>0)?(f/i):null,responsable:r.responsable||null,nota:r.nota||null,
+      peso_final:pfinal,peso_porcion:r.pesoPorcion===""?null:Number(r.pesoPorcion),
+      porciones:r.porciones===""?null:Number(r.porciones),merma:(!isNaN(i)&&f!=null)?(i-f):null,
+      rendimiento:(!isNaN(i)&&f!=null&&i>0)?(f/i):null,responsable:r.responsable||null,nota:r.nota||null,
       origen:r.leido?"foto":"manual"});
   });
   try{ await insertProd(payload); rev=[];$("revList").innerHTML="";$("secRev").hidden=true;$("guardMsg").textContent=`Se guardaron ${payload.length} producción(es).`;await refresh(); }
