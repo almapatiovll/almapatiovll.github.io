@@ -600,11 +600,11 @@ async function guardar(){
   const payload=[];
   listos.forEach(r=>{
     if(captura(r.code)==='multi'){
-      const cfg=CAP_MULTI[r.code];const paca=r.pesoI!==""?Number(r.pesoI):null;
+      const cfg=CAP_MULTI[r.code];const base=PRODS.find(x=>x.c===r.code)||{};const pb=r.pesoI!==""?Number(r.pesoI):null;
       cfg.salidas.forEach(s=>{const n=parseFloat(r[s.k]);if(!isNaN(n)&&n>0){const sp=PRODS.find(x=>x.c===s.code)||{};
         payload.push({fecha:r.fecha||todayISO(),codigo:s.code,preparacion:sp.n,categoria:sp.cat,unidad:sp.u||null,
           recetas:null,peso_inicial:null,peso_final:n*s.g,peso_porcion:s.g,porciones:n,merma:null,rendimiento:null,
-          responsable:r.responsable||null,nota:(r.nota?r.nota+" · ":"")+"desde paca"+(paca?" "+fmtN(paca)+"g":""),origen:r.leido?"foto":"manual"});}});
+          responsable:r.responsable||null,nota:(r.nota?r.nota+" · ":"")+"desde "+(base.n||"base")+(pb?" "+fmtN(pb)+"g":""),origen:r.leido?"foto":"manual"});}});
       return;
     }
     const p=PRODS.find(x=>x.c===r.code)||{};const i=parseFloat(r.pesoI);
