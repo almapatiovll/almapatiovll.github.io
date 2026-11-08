@@ -507,10 +507,18 @@ const CAP_MULTI={
   'PRO-02':{ base:'Peso costilla de factura (g)', salidas:[
     {code:'PRO-16', nombre:'COSTILLA PORCION', g:250, k:'q_PRO-16', label:'N° costilla porción (250 g)'}]},
   'PRO-06':{ base:'Peso panceta de factura (g)', salidas:[
-    {code:'PRO-17', nombre:'PANCETA PORCION', g:250, k:'q_PRO-17', label:'N° panceta porción (250 g)'}]}
+    {code:'PRO-17', nombre:'PANCETA PORCION', g:250, k:'q_PRO-17', label:'N° panceta porción (250 g)'}]},
+  'GUA-01':{ base:'Peso papa criolla alistada (g)', salidas:[
+    {code:'GUA-11', nombre:'PAPA CHURRASCO', g:140, k:'q_GUA-11', label:'N° papa churrasco (140 g)'},
+    {code:'GUA-13', nombre:'PAPA DE CHUNCHULLO', g:180, k:'q_GUA-13', label:'N° papa chunchullo (180 g)'},
+    {code:'GUA-02', nombre:'PAPA ROTA', g:140, k:'q_GUA-02', label:'N° papa rota (140 g)'},
+    {code:'GUA-12', nombre:'PAPA PARA PURE', g:500, k:'q_GUA-12', label:'N° papa para puré (500 g)'}]}
 };
+// papas de porción fija (una sola salida, gramaje fijo)
+const GRAMFIJO={'PRO-EX1':150,'COR-07':160,'COR-08':200,'COR-09':140};
 function captura(code){
   if(CAP_MULTI[code]) return 'multi';
+  if(GRAMFIJO[code]) return 'porcionfija';
   const p=PRODS.find(x=>x.c===code); if(!p) return 'porcionado';
   const c=p.cat||''; const n=norm(p.n);
   if(/SALSAS|ADOBOS|BASES|ENCURTIDOS/.test(c)) return 'receta';
@@ -528,6 +536,9 @@ function fieldsHTML(row){
     h+=fld('N° recetas','recetas',row.recetas)+fld('Rinde total (g)','pesoF',row.pesoF); shown.add('recetas'); shown.add('pesoF');
   } else if(tipo==='rinde'){
     h+=fld('Peso x porción (g)','pesoPorcion',row.pesoPorcion)+fld('N° porciones','porciones',row.porciones); shown.add('pesoPorcion'); shown.add('porciones');
+  } else if(tipo==='porcionfija'){
+    const g=GRAMFIJO[row.code];
+    h+=fld('N° porciones ('+g+' g c/u)','porciones',row.porciones); shown.add('porciones');
   } else {
     h+=fld('Peso inicial (g)','pesoI',row.pesoI)+fld('Porciones','porciones',row.porciones)+fld('Peso final (g)','pesoF',row.pesoF);
     shown.add('pesoI'); shown.add('porciones'); shown.add('pesoF');
@@ -587,6 +598,13 @@ function calcRow(row,el){
     box.innerHTML=!row.code?`<span class="pill warn">falta elegir la producción</span>`:parts.join(" · ");
     return;
   }
+  if(captura(row.code)==='porcionfija'){
+    const g=GRAMFIJO[row.code],por=parseFloat(row.porciones);
+    if(!isNaN(por))parts.push(`${por} × ${g} g = <b>${fmtN(por*g)} g</b>`);
+    parts.push("<span class='muted'>el costo lo calcula la app</span>");
+    box.innerHTML=!row.code?`<span class="pill warn">falta elegir la producción</span>`:parts.join(" · ");
+    return;
+  }
   const i=parseFloat(row.pesoI),f=parseFloat(row.pesoF);
   if(!isNaN(i)&&!isNaN(f)){const merma=i-f,rend=f/i;parts.push(`merma <b>${fmtN(merma)} g</b>`);const cls=rend>=0.95?"ok":(rend>=0.5?"warn":"bad");parts.push(`rendimiento <span class="pill ${cls}">${(rend*100).toFixed(0)}%</span>`);if(p&&p.pct)parts.push(`esperado ~${(p.pct*100).toFixed(0)}%`);}
   const por=parseFloat(row.porciones);if(!isNaN(f)&&!isNaN(por)&&por>0)parts.push(`${fmtN(f/por,0)} g/porción`);
@@ -607,13 +625,17 @@ async function guardar(){
           responsable:r.responsable||null,nota:(r.nota?r.nota+" · ":"")+"desde "+(base.n||"base")+(pb?" "+fmtN(pb)+"g":""),origen:r.leido?"foto":"manual"});}});
       return;
     }
-    const p=PRODS.find(x=>x.c===r.code)||{};const i=parseFloat(r.pesoI);
+    const p=PRODS.find(x=>x.c===r.code)||{};const i=parseFloat(r.pesoI);const tipo=captura(r.code);
+    const gfijo=GRAMFIJO[r.code];
+    let pporc = r.pesoPorcion===""?null:Number(r.pesoPorcion);
+    if(tipo==='porcionfija') pporc=gfijo;
     let pfinal = r.pesoF===""?null:Number(r.pesoF);
-    if(captura(r.code)==='rinde' && pfinal===null && r.pesoPorcion!=="" && r.porciones!=="") pfinal=Number(r.pesoPorcion)*Number(r.porciones);
+    if((tipo==='rinde') && pfinal===null && r.pesoPorcion!=="" && r.porciones!=="") pfinal=Number(r.pesoPorcion)*Number(r.porciones);
+    if(tipo==='porcionfija' && r.porciones!=="") pfinal=gfijo*Number(r.porciones);
     const f=pfinal;
     payload.push({fecha:r.fecha||todayISO(),codigo:p.c,preparacion:p.n,categoria:p.cat,unidad:p.u||null,
       recetas:r.recetas===""?null:Number(r.recetas),peso_inicial:r.pesoI===""?null:Number(r.pesoI),
-      peso_final:pfinal,peso_porcion:r.pesoPorcion===""?null:Number(r.pesoPorcion),
+      peso_final:pfinal,peso_porcion:pporc,
       porciones:r.porciones===""?null:Number(r.porciones),merma:(!isNaN(i)&&f!=null)?(i-f):null,
       rendimiento:(!isNaN(i)&&f!=null&&i>0)?(f/i):null,responsable:r.responsable||null,nota:r.nota||null,
       origen:r.leido?"foto":"manual"});
