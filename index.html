@@ -493,12 +493,42 @@ async function leerFoto(){
   }finally{btn.disabled=false;btn.textContent="Leer foto →";}
 }
 
+// --- Captura dinámica: cada proceso pide solo lo que necesita ---
+const CAP_MULTI={ 'COR-13': { base:'Peso inicial paca (g)', salidas:[
+    {code:'GUA-03', nombre:'PATACON COMBO', g:360, k:'nCombos', label:'N° combos (360 g c/u)'},
+    {code:'GUA-10', nombre:'PATACON FUERTE', g:60, k:'nFuertes', label:'N° fuertes (60 g c/u)'}
+]}};
+function captura(code){
+  if(CAP_MULTI[code]) return 'multi';
+  const p=PRODS.find(x=>x.c===code); const c=p?(p.cat||''):'';
+  if(/SALSAS|ADOBOS|BASES|ENCURTIDOS/.test(c)) return 'receta';
+  return 'porcionado';
+}
+function fld(label,k,val,date){return `<label class="field">${label}<input data-k="${k}" ${date?'type="date"':'type="number" step="any"'} value="${val??''}"></label>`;}
+function fieldsHTML(row){
+  const tipo=captura(row.code); const shown=new Set(['fecha','responsable','nota']);
+  let h=fld('Fecha','fecha',row.fecha,true);
+  if(tipo==='multi'){ const cfg=CAP_MULTI[row.code];
+    h+=fld(cfg.base,'pesoI',row.pesoI); shown.add('pesoI');
+    cfg.salidas.forEach(s=>{h+=fld(s.label,s.k,row[s.k]); shown.add(s.k);});
+  } else if(tipo==='receta'){
+    h+=fld('N° recetas','recetas',row.recetas)+fld('Peso final (g)','pesoF',row.pesoF); shown.add('recetas'); shown.add('pesoF');
+  } else {
+    h+=fld('Peso inicial (g)','pesoI',row.pesoI)+fld('Porciones','porciones',row.porciones)+fld('Peso final (g)','pesoF',row.pesoF);
+    shown.add('pesoI'); shown.add('porciones'); shown.add('pesoF');
+  }
+  h+=`<label class="field">Responsable<input data-k="responsable" value="${row.responsable}"></label>`;
+  if(row._more){ [['N° recetas','recetas'],['Peso inicial (g)','pesoI'],['Peso final (g)','pesoF'],['Peso x porción (g)','pesoPorcion'],['Porciones','porciones']].forEach(([l,k])=>{ if(!shown.has(k)){h+=fld(l,k,row[k]); shown.add(k);} }); }
+  h+=`<label class="field full">Nota<input data-k="nota" value="${row.nota}"></label>`;
+  return h;
+}
 function addRow(d){
   const id="r"+Math.random().toString(36).slice(2,8);
-  const row={id,code:d.code||"",leido:d.leido||"",fecha:d.fecha||todayISO(),recetas:d.recetas??"",pesoI:d.pesoI??"",pesoF:d.pesoF??"",pesoPorcion:d.pesoPorcion??"",porciones:d.porciones??"",responsable:d.responsable||"",nota:d.nota||""};
+  const row={id,code:d.code||"",leido:d.leido||"",fecha:d.fecha||todayISO(),recetas:d.recetas??"",pesoI:d.pesoI??"",pesoF:d.pesoF??"",pesoPorcion:d.pesoPorcion??"",porciones:d.porciones??"",nCombos:"",nFuertes:"",responsable:d.responsable||"",nota:d.nota||"",_more:false};
   rev.push(row);
   const el=document.createElement("div");el.className="rev";
-  el.innerHTML=`
+  function paint(){
+    el.innerHTML=`
     <div class="rev-head">
       <div style="flex:1;min-width:0">
         <select data-k="code" style="font-weight:700">${prodOptions(row.code)}</select>
@@ -506,24 +536,29 @@ function addRow(d){
       </div>
       <button class="ghost sm danger" data-del>✕</button>
     </div>
-    <div class="grid">
-      <label class="field">Fecha<input data-k="fecha" type="date" value="${row.fecha}"></label>
-      <label class="field">N° recetas<input data-k="recetas" type="number" step="any" value="${row.recetas}"></label>
-      <label class="field">Peso inicial (g)<input data-k="pesoI" type="number" step="any" value="${row.pesoI}"></label>
-      <label class="field">Peso final (g)<input data-k="pesoF" type="number" step="any" value="${row.pesoF}"></label>
-      <label class="field">Peso x porción (g)<input data-k="pesoPorcion" type="number" step="any" value="${row.pesoPorcion}"></label>
-      <label class="field">Porciones<input data-k="porciones" type="number" step="any" value="${row.porciones}"></label>
-      <label class="field">Responsable<input data-k="responsable" value="${row.responsable}"></label>
-      <label class="field full">Nota<input data-k="nota" value="${row.nota}"></label>
-    </div>
+    <div class="grid">${fieldsHTML(row)}</div>
+    <div class="row" style="margin-top:2px"><button class="ghost sm" data-more>${row._more?'– menos campos':'+ más campos'}</button></div>
     <div class="calc" data-calc></div>`;
-  el.querySelector("[data-del]").onclick=()=>{rev=rev.filter(x=>x.id!==id);el.remove();};
-  el.querySelectorAll("[data-k]").forEach(inp=>{inp.oninput=()=>{row[inp.dataset.k]=inp.value;calcRow(row,el);};});
-  $("revList").appendChild(el);calcRow(row,el);
+    el.querySelector("[data-del]").onclick=()=>{rev=rev.filter(x=>x.id!==id);el.remove();};
+    el.querySelector("[data-more]").onclick=()=>{row._more=!row._more;paint();};
+    el.querySelectorAll("[data-k]").forEach(inp=>{inp.oninput=()=>{row[inp.dataset.k]=inp.value; if(inp.dataset.k==='code'){paint();} else {calcRow(row,el);} };});
+    calcRow(row,el);
+  }
+  paint();
+  $("revList").appendChild(el);
 }
 function calcRow(row,el){
-  const box=el.querySelector("[data-calc]");
-  const i=parseFloat(row.pesoI),f=parseFloat(row.pesoF);const p=PRODS.find(x=>x.c===row.code);let parts=[];
+  const box=el.querySelector("[data-calc]");const p=PRODS.find(x=>x.c===row.code);let parts=[];
+  if(captura(row.code)==='multi'){
+    const cfg=CAP_MULTI[row.code];let tot=0,pz=0;
+    cfg.salidas.forEach(s=>{const n=parseFloat(row[s.k])||0;if(n){parts.push(`${n} × ${s.nombre.replace('PATACON ','')} (${s.g}g)`);tot+=n*s.g;pz+=n;}});
+    const i=parseFloat(row.pesoI);
+    if(tot)parts.push(`= <b>${fmtN(tot)} g</b> en ${pz} und`);
+    if(!isNaN(i)&&i>0&&tot){const rend=tot/i;const cls=rend>=0.5?"warn":"bad";parts.push(`rinde paca <span class="pill ${cls}">${(rend*100).toFixed(0)}%</span>`);}
+    box.innerHTML=!row.code?`<span class="pill warn">falta elegir la producción</span>`:(parts.join(" · ")||"<span class='muted'>ingresa combos y fuertes</span>");
+    return;
+  }
+  const i=parseFloat(row.pesoI),f=parseFloat(row.pesoF);
   if(!isNaN(i)&&!isNaN(f)){const merma=i-f,rend=f/i;parts.push(`merma <b>${fmtN(merma)} g</b>`);const cls=rend>=0.95?"ok":(rend>=0.5?"warn":"bad");parts.push(`rendimiento <span class="pill ${cls}">${(rend*100).toFixed(0)}%</span>`);if(p&&p.pct)parts.push(`esperado ~${(p.pct*100).toFixed(0)}%`);}
   const por=parseFloat(row.porciones);if(!isNaN(f)&&!isNaN(por)&&por>0)parts.push(`${fmtN(f/por,0)} g/porción`);
   if(!row.code)box.innerHTML=`<span class="pill warn">falta elegir la producción</span>`;else box.innerHTML=parts.join(" · ")||"<span class='muted'>sin pesos</span>";
@@ -533,14 +568,23 @@ async function guardar(){
   const listos=rev.filter(r=>r.code);
   if(!listos.length){$("guardMsg").textContent="Elige la producción en cada fila antes de guardar.";return;}
   const btn=$("btnGuardar");btn.disabled=true;btn.innerHTML='<span class="spin"></span> Guardando…';
-  const payload=listos.map(r=>{
+  const payload=[];
+  listos.forEach(r=>{
+    if(captura(r.code)==='multi'){
+      const cfg=CAP_MULTI[r.code];const paca=r.pesoI!==""?Number(r.pesoI):null;
+      cfg.salidas.forEach(s=>{const n=parseFloat(r[s.k]);if(!isNaN(n)&&n>0){const sp=PRODS.find(x=>x.c===s.code)||{};
+        payload.push({fecha:r.fecha||todayISO(),codigo:s.code,preparacion:sp.n,categoria:sp.cat,unidad:sp.u||null,
+          recetas:null,peso_inicial:null,peso_final:n*s.g,peso_porcion:s.g,porciones:n,merma:null,rendimiento:null,
+          responsable:r.responsable||null,nota:(r.nota?r.nota+" · ":"")+"desde paca"+(paca?" "+fmtN(paca)+"g":""),origen:r.leido?"foto":"manual"});}});
+      return;
+    }
     const p=PRODS.find(x=>x.c===r.code)||{};const i=parseFloat(r.pesoI),f=parseFloat(r.pesoF);
-    return {fecha:r.fecha||todayISO(),codigo:p.c,preparacion:p.n,categoria:p.cat,unidad:p.u||null,
+    payload.push({fecha:r.fecha||todayISO(),codigo:p.c,preparacion:p.n,categoria:p.cat,unidad:p.u||null,
       recetas:r.recetas===""?null:Number(r.recetas),peso_inicial:r.pesoI===""?null:Number(r.pesoI),
       peso_final:r.pesoF===""?null:Number(r.pesoF),peso_porcion:r.pesoPorcion===""?null:Number(r.pesoPorcion),
       porciones:r.porciones===""?null:Number(r.porciones),merma:(!isNaN(i)&&!isNaN(f))?(i-f):null,
       rendimiento:(!isNaN(i)&&!isNaN(f)&&i>0)?(f/i):null,responsable:r.responsable||null,nota:r.nota||null,
-      origen:r.leido?"foto":"manual"};
+      origen:r.leido?"foto":"manual"});
   });
   try{ await insertProd(payload); rev=[];$("revList").innerHTML="";$("secRev").hidden=true;$("guardMsg").textContent=`Se guardaron ${payload.length} producción(es).`;await refresh(); }
   catch(e){ $("guardMsg").textContent="No se pudo guardar: "+e.message; }
