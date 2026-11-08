@@ -494,10 +494,21 @@ async function leerFoto(){
 }
 
 // --- Captura dinámica: cada proceso pide solo lo que necesita ---
-const CAP_MULTI={ 'COR-13': { base:'Peso inicial paca (g)', salidas:[
-    {code:'GUA-03', nombre:'PATACON COMBO', g:360, k:'nCombos', label:'N° combos (360 g c/u)'},
-    {code:'GUA-10', nombre:'PATACON FUERTE', g:60, k:'nFuertes', label:'N° fuertes (60 g c/u)'}
-]}};
+const CAP_MULTI={
+  'COR-13':{ base:'Peso inicial paca (g)', salidas:[
+    {code:'GUA-03', nombre:'PATACON COMBO', g:360, k:'q_GUA-03', label:'N° combos (360 g)'},
+    {code:'GUA-10', nombre:'PATACON FUERTE', g:60, k:'q_GUA-10', label:'N° fuertes (60 g)'}]},
+  'PRO-13':{ base:'Peso lomo de factura (g)', salidas:[
+    {code:'PRO-14', nombre:'LOMO PLATO', g:240, k:'q_PRO-14', label:'N° lomo plato (240 g)'},
+    {code:'PRO-15', nombre:'LOMO AL WOK', g:220, k:'q_PRO-15', label:'N° lomo wok (220 g)'}]},
+  'PRO-08':{ base:'Peso salmón de factura (g)', salidas:[
+    {code:'PRO-09', nombre:'SALMON PLATO', g:240, k:'q_PRO-09', label:'N° salmón plato (240 g)'},
+    {code:'PRO-10', nombre:'SALMON ENSALADA', g:140, k:'q_PRO-10', label:'N° salmón ensalada (140 g)'}]},
+  'PRO-02':{ base:'Peso costilla de factura (g)', salidas:[
+    {code:'PRO-16', nombre:'COSTILLA PORCION', g:250, k:'q_PRO-16', label:'N° costilla porción (250 g)'}]},
+  'PRO-06':{ base:'Peso panceta de factura (g)', salidas:[
+    {code:'PRO-17', nombre:'PANCETA PORCION', g:250, k:'q_PRO-17', label:'N° panceta porción (250 g)'}]}
+};
 function captura(code){
   if(CAP_MULTI[code]) return 'multi';
   const p=PRODS.find(x=>x.c===code); if(!p) return 'porcionado';
@@ -555,10 +566,10 @@ function calcRow(row,el){
   const box=el.querySelector("[data-calc]");const p=PRODS.find(x=>x.c===row.code);let parts=[];
   if(captura(row.code)==='multi'){
     const cfg=CAP_MULTI[row.code];let tot=0,pz=0;
-    cfg.salidas.forEach(s=>{const n=parseFloat(row[s.k])||0;if(n){parts.push(`${n} × ${s.nombre.replace('PATACON ','')} (${s.g}g)`);tot+=n*s.g;pz+=n;}});
+    cfg.salidas.forEach(s=>{const n=parseFloat(row[s.k])||0;if(n){parts.push(`${n} × ${s.nombre} (${s.g}g)`);tot+=n*s.g;pz+=n;}});
     const i=parseFloat(row.pesoI);
     if(tot)parts.push(`= <b>${fmtN(tot)} g</b> en ${pz} und`);
-    if(!isNaN(i)&&i>0&&tot){const rend=tot/i;const cls=rend>=0.5?"warn":"bad";parts.push(`rinde paca <span class="pill ${cls}">${(rend*100).toFixed(0)}%</span>`);}
+    if(!isNaN(i)&&i>0&&tot){const rend=tot/i;const cls=rend>=0.5?"warn":"bad";parts.push(`rinde <span class="pill ${cls}">${(rend*100).toFixed(0)}%</span>`);}
     box.innerHTML=!row.code?`<span class="pill warn">falta elegir la producción</span>`:(parts.join(" · ")||"<span class='muted'>ingresa combos y fuertes</span>");
     return;
   }
