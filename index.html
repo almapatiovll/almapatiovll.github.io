@@ -500,8 +500,10 @@ const CAP_MULTI={ 'COR-13': { base:'Peso inicial paca (g)', salidas:[
 ]}};
 function captura(code){
   if(CAP_MULTI[code]) return 'multi';
-  const p=PRODS.find(x=>x.c===code); const c=p?(p.cat||''):'';
+  const p=PRODS.find(x=>x.c===code); if(!p) return 'porcionado';
+  const c=p.cat||''; const n=norm(p.n);
   if(/SALSAS|ADOBOS|BASES|ENCURTIDOS/.test(c)) return 'receta';
+  if(/\bRINDE\b/.test(n)) return 'rinde';
   return 'porcionado';
 }
 function fld(label,k,val,date){return `<label class="field">${label}<input data-k="${k}" ${date?'type="date"':'type="number" step="any"'} value="${val??''}"></label>`;}
@@ -512,7 +514,9 @@ function fieldsHTML(row){
     h+=fld(cfg.base,'pesoI',row.pesoI); shown.add('pesoI');
     cfg.salidas.forEach(s=>{h+=fld(s.label,s.k,row[s.k]); shown.add(s.k);});
   } else if(tipo==='receta'){
-    h+=fld('N° recetas','recetas',row.recetas)+fld('Peso final (g)','pesoF',row.pesoF); shown.add('recetas'); shown.add('pesoF');
+    h+=fld('N° recetas','recetas',row.recetas)+fld('Rinde total (g)','pesoF',row.pesoF); shown.add('recetas'); shown.add('pesoF');
+  } else if(tipo==='rinde'){
+    h+=fld('Peso inicial (g)','pesoI',row.pesoI)+fld('Peso final (g)','pesoF',row.pesoF); shown.add('pesoI'); shown.add('pesoF');
   } else {
     h+=fld('Peso inicial (g)','pesoI',row.pesoI)+fld('Porciones','porciones',row.porciones)+fld('Peso final (g)','pesoF',row.pesoF);
     shown.add('pesoI'); shown.add('porciones'); shown.add('pesoF');
@@ -556,6 +560,13 @@ function calcRow(row,el){
     if(tot)parts.push(`= <b>${fmtN(tot)} g</b> en ${pz} und`);
     if(!isNaN(i)&&i>0&&tot){const rend=tot/i;const cls=rend>=0.5?"warn":"bad";parts.push(`rinde paca <span class="pill ${cls}">${(rend*100).toFixed(0)}%</span>`);}
     box.innerHTML=!row.code?`<span class="pill warn">falta elegir la producción</span>`:(parts.join(" · ")||"<span class='muted'>ingresa combos y fuertes</span>");
+    return;
+  }
+  if(captura(row.code)==='receta'){
+    const rec=parseFloat(row.recetas),f=parseFloat(row.pesoF);
+    if(!isNaN(f))parts.push(`rinde total <b>${fmtN(f)} g</b>`);
+    if(!isNaN(f)&&!isNaN(rec)&&rec>0)parts.push(`${fmtN(f/rec,0)} g/receta`);
+    box.innerHTML=!row.code?`<span class="pill warn">falta elegir la producción</span>`:(parts.join(" · ")||"<span class='muted'>ingresa recetas y rinde</span>");
     return;
   }
   const i=parseFloat(row.pesoI),f=parseFloat(row.pesoF);
