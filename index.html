@@ -272,6 +272,7 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
         <input id="buscarRec" placeholder="Buscar receta o ingrediente…" style="flex:1;min-width:160px">
         <button class="ghost sm" id="btnRefRec">↻</button>
       </div>
+      <div class="row" id="recAreaChips" style="gap:6px;margin:0 0 8px;flex-wrap:wrap"></div>
       <div class="row" id="recCatChips" style="gap:6px;margin:0 0 10px;flex-wrap:wrap"></div>
       <div id="recFormWrap"></div>
       <div class="banner info" id="recNota" style="margin:4px 0 10px"></div>
@@ -579,8 +580,13 @@ function calcRow(row,el){
     const cfg=CAP_MULTI[row.code];let tot=0,pz=0;
     cfg.salidas.forEach(s=>{const n=parseFloat(row[s.k])||0;if(n){parts.push(`${n} × ${s.nombre} (${s.g}g)`);tot+=n*s.g;pz+=n;}});
     const i=parseFloat(row.pesoI);
+    const pct=cfg.pct||0.9;
+    if(!isNaN(i)&&i>0){
+      const ori=cfg.salidas.map(s=>`~${Math.round(i*pct/s.g)} ${s.nombre}`).join(' ó ');
+      parts.push(`<span class="muted">orientación (≈${Math.round(pct*100)}% aprov.): de ${fmtN(i)} g deberían salir ${ori}</span>`);
+    }
     if(tot)parts.push(`= <b>${fmtN(tot)} g</b> en ${pz} und`);
-    if(!isNaN(i)&&i>0&&tot){const rend=tot/i;const cls=rend>=0.5?"warn":"bad";parts.push(`rinde <span class="pill ${cls}">${(rend*100).toFixed(0)}%</span>`);}
+    if(!isNaN(i)&&i>0&&tot){const rend=tot/i;const cls=rend>=0.5?"warn":"bad";parts.push(`rinde real <span class="pill ${cls}">${(rend*100).toFixed(0)}%</span>`);}
     box.innerHTML=!row.code?`<span class="pill warn">falta elegir la producción</span>`:(parts.join(" · ")||"<span class='muted'>ingresa combos y fuertes</span>");
     return;
   }
@@ -709,8 +715,10 @@ function priceOf(key){
   if(TOTEAT[key]) return TOTEAT[key];
   return null;
 }
-let recCat='TODAS', prodCat='TODAS', recView='preparacion';
-function setRecView(v){ recView=v; recCat='TODAS'; document.querySelectorAll('#recvNav [data-rv]').forEach(b=>b.className=(b.dataset.rv===v?'primary sm':'ghost sm')); renderRecetas(); }
+let recCat='TODAS', prodCat='TODAS', recView='preparacion', recArea='TODAS';
+function esBarRec(r){ return /^(COC|SOD|VIN)-/.test(r.c) || ['COCTEL','SODA','VINO','BAR'].includes(String(r.categoria||'').toUpperCase()); }
+function catRec(r){ const c=String(r.categoria||'').toUpperCase(); if(['COCTEL','SODA','VINO'].includes(c)) return c; return catOf(r.n); }
+function setRecView(v){ recView=v; recCat='TODAS'; recArea=(v==='plato'?'BAR':'TODAS'); document.querySelectorAll('#recvNav [data-rv]').forEach(b=>b.className=(b.dataset.rv===v?'primary sm':'ghost sm')); renderRecetas(); }
 async function moverTipo(cod,tipo,btn){
   if(btn)btn.disabled=true;
   const r=recetasAll().find(x=>x.c===cod); if(!r){if(btn)btn.disabled=false;return;}
@@ -844,11 +852,19 @@ function recetasAll(){
 }
 function renderRecetas(){
   const q=norm(document.getElementById('buscarRec').value);
-  const viewR=recetasAll().filter(r=>(r.tipo||'preparacion')===recView);
-  const cats=[...new Set(viewR.map(r=>catOf(r.n)))].sort();
+  let viewR=recetasAll().filter(r=>(r.tipo||'preparacion')===recView);
+  // Sub-división BAR / COCINA solo en Platos
+  const areaEl=document.getElementById('recAreaChips');
+  if(recView==='plato'){
+    chipRow('recAreaChips',['BAR','COCINA'],recArea,(a)=>{recArea=a;recCat='TODAS';renderRecetas();});
+    if(recArea==='BAR') viewR=viewR.filter(esBarRec);
+    else if(recArea==='COCINA') viewR=viewR.filter(r=>!esBarRec(r));
+  } else { if(areaEl)areaEl.innerHTML=''; }
+  const cats=[...new Set(viewR.map(r=>recView==='plato'?catRec(r):catOf(r.n)))].sort();
   chipRow('recCatChips',cats,recCat,(c)=>{recCat=c;renderRecetas();});
   const list=viewR.filter(r=>{
-    if(recCat!=='TODAS' && catOf(r.n)!==recCat) return false;
+    const rc=(recView==='plato'?catRec(r):catOf(r.n));
+    if(recCat!=='TODAS' && rc!==recCat) return false;
     if(!q)return true;
     if(norm(r.n).includes(q))return true;
     return (r.items||[]).some(it=>norm(it.i||it.ing).includes(q));
