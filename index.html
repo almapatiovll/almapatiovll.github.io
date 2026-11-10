@@ -582,10 +582,12 @@ function calcRow(row,el){
     const i=parseFloat(row.pesoI);
     const pct=cfg.pct||0.9;
     if(!isNaN(i)&&i>0){
-      const ori=cfg.salidas.map(s=>`~${Math.round(i*pct/s.g)} ${s.nombre}`).join(' ó ');
-      parts.push(`<span class="muted">orientación (≈${Math.round(pct*100)}% aprov.): de ${fmtN(i)} g deberían salir ${ori}</span>`);
+      const obj=i*pct;const gs=cfg.salidas.map(s=>s.g);
+      const nMin=Math.round(obj/Math.max(...gs)),nMax=Math.round(obj/Math.min(...gs));
+      const rango=(nMin===nMax)?`~${nMin} porciones`:`entre ~${nMin} y ~${nMax} porciones`;
+      parts.push(`<span class="muted">orientación: todas las porciones deberían <b>sumar ~${fmtN(Math.round(obj))} g</b> (≈${Math.round(pct*100)}% de ${fmtN(i)} g) → ${rango} según la mezcla</span>`);
     }
-    if(tot)parts.push(`= <b>${fmtN(tot)} g</b> en ${pz} und`);
+    if(tot)parts.push(`contado: <b>${fmtN(tot)} g</b> en ${pz} und`);
     if(!isNaN(i)&&i>0&&tot){const rend=tot/i;const cls=rend>=0.5?"warn":"bad";parts.push(`rinde real <span class="pill ${cls}">${(rend*100).toFixed(0)}%</span>`);}
     box.innerHTML=!row.code?`<span class="pill warn">falta elegir la producción</span>`:(parts.join(" · ")||"<span class='muted'>ingresa combos y fuertes</span>");
     return;
