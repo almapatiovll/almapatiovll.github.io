@@ -146,6 +146,7 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
         <label class="field">Usuario<input id="umUser" placeholder="ej. cocina"></label>
         <label class="field">Nombre<input id="umNom" placeholder="ej. Cocina"></label>
         <label class="field">PIN<input id="umPin" inputmode="numeric" placeholder="PIN"></label>
+        <label class="field">Rol<select id="umRol"><option value="cocina">Cocina (sin costos)</option><option value="admin">Administración (ve todo)</option></select></label>
       </div>
       <button class="primary sm" id="umAdd" style="margin-top:8px">Guardar usuario</button>
     </div>
@@ -872,33 +873,35 @@ function renderRecetas(){
     return (r.items||[]).some(it=>norm(it.i||it.ing).includes(q));
   });
   document.getElementById('recNota').textContent=
-    (recView==='plato'?'Platos del menú':'Preparaciones (salsas, fondos, adobos, guarniciones…)')+' · '+viewR.length+' en esta vista. El costo es estimado (ingrediente × precio real). Las preparaciones ruedan dentro de los platos.';
+    (recView==='plato'?'Platos del menú':'Preparaciones (salsas, fondos, adobos, guarniciones…)')+' · '+viewR.length+' en esta vista.'+(esAdmin()?' El costo es estimado (ingrediente × precio real). Las preparaciones ruedan dentro de los platos.':' Ingredientes y pasos de cada receta.');
   const el=document.getElementById('recList');
   if(!list.length){el.innerHTML='<div class="empty">Sin recetas en esta vista. Usa “+ Nueva receta”, o mueve una con el botón de la tarjeta.</div>';return;}
   el.innerHTML='';
+  const verCosto=esAdmin();
   for(const r of list){
     const items=r.items||[];
     const cc = costoReceta(items);
-    const costTxt=(cc.tot==null)?'—':'$'+fmtN(cc.tot);
-    const cu=(cc.tot!=null&&r.rend)?('$'+fmtN(Math.round(cc.tot/Number(r.rend)))+'/'+(r.u||'u')):'';
+    const costTxt=!verCosto?'':((cc.tot==null)?'—':'$'+fmtN(cc.tot));
+    const cu=(verCosto&&cc.tot!=null&&r.rend)?('$'+fmtN(Math.round(cc.tot/Number(r.rend)))+'/'+(r.u||'u')):'';
     const rows=items.map(it=>{
       const ing=it.i||it.ing, qq=(it.q!=null?it.q:it.qty), uu=it.u||it.un||'';
       const lc=costoItem(ing,qq,uu);
-      return '<tr><td>'+ing+'</td><td class="num">'+fmtN(qq,3)+'</td><td>'+uu+'</td><td class="num">'+(lc==null?'<span class="muted">falta precio</span>':'$'+fmtN(lc))+'</td></tr>';
+      const tdc=verCosto?('<td class="num">'+(lc==null?'<span class="muted">falta precio</span>':'$'+fmtN(lc))+'</td>'):'';
+      return '<tr><td>'+ing+'</td><td class="num">'+fmtN(qq,3)+'</td><td>'+uu+'</td>'+tdc+'</tr>';
     }).join('');
     const card=document.createElement('div'); card.className='recipe';
     card.innerHTML=
       '<div class="rhead"><span class="caret">▸</span>'
       +'<div><div class="rname">'+r.n+(r.esEdit?' <span class="chip-badge">editada</span>':(r.nueva?' <span class="chip-badge">nueva</span>':''))+'</div>'
       +'<div class="rmeta">'+(r.c||'')+(r.rend?(' · rinde '+fmtN(r.rend,3)+' '+(r.u||'')):'')+' · '+items.length+' ingredientes</div></div>'
-      +'<div class="cost">'+costTxt+(cu?('<small>'+cu+'</small>'):'')+'</div>'
+      +(verCosto?('<div class="cost">'+costTxt+(cu?('<small>'+cu+'</small>'):'')+'</div>'):'')
       +'<button class="ghost sm btnEditRec" data-cod="'+r.c+'" title="Editar esta receta" style="margin-left:8px;align-self:center;white-space:nowrap">✏ Editar</button></div>'
       +'<div class="rbody"><div class="tablewrap" style="margin-top:12px"><table>'
-      +'<thead><tr><th>Ingrediente</th><th class="num">Cant.</th><th>Unidad</th><th class="num">Costo</th></tr></thead>'
+      +'<thead><tr><th>Ingrediente</th><th class="num">Cant.</th><th>Unidad</th>'+(verCosto?'<th class="num">Costo</th>':'')+'</tr></thead>'
       +'<tbody>'+(rows||'<tr><td colspan="4" class="empty">Sin ingredientes</td></tr>')+'</tbody>'
-      +'<tfoot><tr><th colspan="3" style="text-align:right">Costo total</th><th class="num">'+costTxt+'</th></tr></tfoot>'
+      +(verCosto?('<tfoot><tr><th colspan="3" style="text-align:right">Costo total</th><th class="num">'+costTxt+'</th></tr></tfoot>'):'')
       +'</table></div>'
-      +((cc.falta&&cc.falta.length)?('<p class="sub" style="color:var(--warn-ink);margin-top:8px">Faltan precios: '+cc.falta.join(', ')+'</p>'):'')
+      +((verCosto&&cc.falta&&cc.falta.length)?('<p class="sub" style="color:var(--warn-ink);margin-top:8px">Faltan precios: '+cc.falta.join(', ')+'</p>'):'')
       +'<label class="field" style="margin-top:12px">Pasos de preparación'
       +'<textarea class="pasos" data-cod="'+r.c+'" placeholder="Escribe los pasos…">'+pasosDe(r.c)+'</textarea></label>'
       +'<div class="row" style="margin-top:8px"><button class="primary sm btnPasos" data-cod="'+r.c+'">Guardar pasos</button><button class="ghost sm btnEditRec" data-cod="'+r.c+'">✏ Editar ingredientes / rinde</button><button class="ghost sm btnMoverTipo" data-cod="'+r.c+'" data-to="'+(recView==='plato'?'preparacion':'plato')+'">'+(recView==='plato'?'↩ Mover a Preparaciones':'🍽️ Mover a Platos')+'</button><span class="muted okp" style="font-size:.8rem"></span></div>'
@@ -1487,10 +1490,23 @@ async function authCall(payload){
 }
 function sesionUser(){ try{return sessionStorage.getItem('alma_user');}catch(e){return null;} }
 function sesionNombre(){ try{return sessionStorage.getItem('alma_nombre')||sesionUser();}catch(e){return sesionUser();} }
+function sesionRol(){ try{return sessionStorage.getItem('alma_rol')||'admin';}catch(e){return 'admin';} }
+function esAdmin(){ return sesionRol()==='admin'; }
+function aplicarRol(){
+  const admin=esAdmin();
+  try{document.body.setAttribute('data-rol',admin?'admin':'cocina');}catch(e){}
+  const tf=document.querySelector('.tab[data-panel="facturas"]'); if(tf)tf.style.display=admin?'':'none';
+  const bu=document.getElementById('btnUsuarios'); if(bu)bu.style.display=admin?'':'none';
+  const se=document.getElementById('secEmparejar'); if(se&&!admin)se.hidden=true;
+  // si cocina quedó parada en facturas, llevarla a producciones
+  if(!admin){ const af=document.querySelector('.tab.active[data-panel="facturas"]'); if(af){const tp=document.querySelector('.tab[data-panel="prod"]'); if(tp)tp.click();} }
+  try{ if(typeof renderRecetas==='function') renderRecetas(); }catch(e){}
+}
 function mostrarApp(){
   const ov=document.getElementById('loginOverlay'); if(ov)ov.style.display='none';
   const ub=document.getElementById('userBar'); if(ub){ub.hidden=false; const un=document.getElementById('userName'); if(un)un.textContent='👋 '+(sesionNombre()||'');}
   startApp();
+  aplicarRol();
 }
 async function hacerLogin(){
   const u=document.getElementById('loginUser').value.trim();
@@ -1499,7 +1515,7 @@ async function hacerLogin(){
   if(!u||!p){ msg.textContent='Escribe usuario y PIN'; return; }
   msg.textContent='Entrando…';
   const res=await authCall({action:'login',usuario:u,pin:p});
-  if(res.ok){ try{sessionStorage.setItem('alma_user',res.usuario);sessionStorage.setItem('alma_nombre',res.nombre||res.usuario);}catch(e){} msg.textContent=''; document.getElementById('loginPin').value=''; mostrarApp(); }
+  if(res.ok){ try{sessionStorage.setItem('alma_user',res.usuario);sessionStorage.setItem('alma_nombre',res.nombre||res.usuario);sessionStorage.setItem('alma_rol',res.rol||'admin');}catch(e){} msg.textContent=''; document.getElementById('loginPin').value=''; mostrarApp(); }
   else { msg.textContent=res.error||'No se pudo entrar'; }
 }
 function salir(){ try{sessionStorage.removeItem('alma_user');sessionStorage.removeItem('alma_nombre');}catch(e){} location.reload(); }
@@ -1513,13 +1529,13 @@ async function cargarListaUsuarios(){
   const res=await authCall({action:'list',usuario:sesionUser(),pin});
   if(!res.ok){ cont.innerHTML=''; msg.textContent=res.error||'No autorizado'; return; }
   if(!res.usuarios||!res.usuarios.length){ cont.innerHTML='<div class="empty">Sin usuarios.</div>'; return; }
-  cont.innerHTML=res.usuarios.map(u=>'<div class="row" style="justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0"><span><b>'+u.usuario+'</b>'+(u.nombre&&u.nombre!==u.usuario?(' · '+u.nombre):'')+(u.activo===false?' <span class="muted">(inactivo)</span>':'')+'</span>'+(norm2(u.usuario)===norm2(sesionUser())?'<span class="muted" style="font-size:.75rem">tú</span>':'<button class="ghost sm umDel" data-u="'+u.usuario+'">✕ borrar</button>')+'</div>').join('');
+  cont.innerHTML=res.usuarios.map(u=>'<div class="row" style="justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0"><span><b>'+u.usuario+'</b>'+(u.nombre&&u.nombre!==u.usuario?(' · '+u.nombre):'')+' <span class="chip-badge">'+((u.rol||'admin')==='admin'?'admin':'cocina')+'</span>'+(u.activo===false?' <span class="muted">(inactivo)</span>':'')+'</span>'+(norm2(u.usuario)===norm2(sesionUser())?'<span class="muted" style="font-size:.75rem">tú</span>':'<button class="ghost sm umDel" data-u="'+u.usuario+'">✕ borrar</button>')+'</div>').join('');
   cont.querySelectorAll('.umDel').forEach(b=>b.addEventListener('click',()=>borrarUsuario(b.dataset.u)));
 }
 async function agregarUsuario(){
   const pin=adminPin(); const msg=document.getElementById('umMsg');
   if(!pin){ msg.textContent='Escribe tu PIN arriba.'; return; }
-  const nu={usuario:document.getElementById('umUser').value.trim(),nombre:document.getElementById('umNom').value.trim(),pin:document.getElementById('umPin').value.trim()};
+  const nu={usuario:document.getElementById('umUser').value.trim(),nombre:document.getElementById('umNom').value.trim(),pin:document.getElementById('umPin').value.trim(),rol:(document.getElementById('umRol')||{}).value||'cocina'};
   if(!nu.usuario||!nu.pin){ msg.textContent='Falta usuario o PIN del nuevo.'; return; }
   msg.textContent='Guardando…';
   const res=await authCall({action:'add',usuario:sesionUser(),pin,nuevo:nu});
