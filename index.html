@@ -146,7 +146,17 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
         <label class="field">Usuario<input id="umUser" placeholder="ej. cocina"></label>
         <label class="field">Nombre<input id="umNom" placeholder="ej. Cocina"></label>
         <label class="field">PIN<input id="umPin" inputmode="numeric" placeholder="PIN"></label>
-        <label class="field">Rol<select id="umRol"><option value="cocina">Cocina (sin costos)</option><option value="admin">Administración (ve todo)</option></select></label>
+      </div>
+      <div class="field" style="margin-top:8px">Permisos de este usuario
+        <label style="display:flex;gap:8px;align-items:center;margin-top:4px;font-weight:600"><input type="checkbox" id="umAdminFull"> 👑 Administrador — ve y controla TODO</label>
+        <div id="umPermsBox" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 14px;margin-top:6px;padding-left:4px">
+          <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" class="umP" value="prod" checked> 📋 Producciones</label>
+          <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" class="umP" value="recetas" checked> 📖 Recetas</label>
+          <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" class="umP" value="inventario"> 📦 Inventarios</label>
+          <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" class="umP" value="facturas"> 🧾 Facturas y proveedores</label>
+          <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" class="umP" value="costos"> 💲 Ver costos y precios</label>
+          <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" class="umP" value="tablero"> 📊 Tablero</label>
+        </div>
       </div>
       <button class="primary sm" id="umAdd" style="margin-top:8px">Guardar usuario</button>
     </div>
@@ -873,11 +883,11 @@ function renderRecetas(){
     return (r.items||[]).some(it=>norm(it.i||it.ing).includes(q));
   });
   document.getElementById('recNota').textContent=
-    (recView==='plato'?'Platos del menú':'Preparaciones (salsas, fondos, adobos, guarniciones…)')+' · '+viewR.length+' en esta vista.'+(esAdmin()?' El costo es estimado (ingrediente × precio real). Las preparaciones ruedan dentro de los platos.':' Ingredientes y pasos de cada receta.');
+    (recView==='plato'?'Platos del menú':'Preparaciones (salsas, fondos, adobos, guarniciones…)')+' · '+viewR.length+' en esta vista.'+(can('costos')?' El costo es estimado (ingrediente × precio real). Las preparaciones ruedan dentro de los platos.':' Ingredientes y pasos de cada receta.');
   const el=document.getElementById('recList');
   if(!list.length){el.innerHTML='<div class="empty">Sin recetas en esta vista. Usa “+ Nueva receta”, o mueve una con el botón de la tarjeta.</div>';return;}
   el.innerHTML='';
-  const verCosto=esAdmin();
+  const verCosto=can('costos');
   for(const r of list){
     const items=r.items||[];
     const cc = costoReceta(items);
@@ -1491,15 +1501,18 @@ async function authCall(payload){
 function sesionUser(){ try{return sessionStorage.getItem('alma_user');}catch(e){return null;} }
 function sesionNombre(){ try{return sessionStorage.getItem('alma_nombre')||sesionUser();}catch(e){return sesionUser();} }
 function sesionRol(){ try{return sessionStorage.getItem('alma_rol')||'admin';}catch(e){return 'admin';} }
+function sesionPerms(){ try{return JSON.parse(sessionStorage.getItem('alma_perms')||'[]');}catch(e){return [];} }
 function esAdmin(){ return sesionRol()==='admin'; }
+function can(k){ return esAdmin() || sesionPerms().indexOf(k)>=0; }
 function aplicarRol(){
   const admin=esAdmin();
-  try{document.body.setAttribute('data-rol',admin?'admin':'cocina');}catch(e){}
-  const tf=document.querySelector('.tab[data-panel="facturas"]'); if(tf)tf.style.display=admin?'':'none';
-  const bu=document.getElementById('btnUsuarios'); if(bu)bu.style.display=admin?'':'none';
-  const se=document.getElementById('secEmparejar'); if(se&&!admin)se.hidden=true;
-  // si cocina quedó parada en facturas, llevarla a producciones
-  if(!admin){ const af=document.querySelector('.tab.active[data-panel="facturas"]'); if(af){const tp=document.querySelector('.tab[data-panel="prod"]'); if(tp)tp.click();} }
+  try{document.body.setAttribute('data-rol',admin?'admin':'user');}catch(e){}
+  const tab=(p,ok)=>{const t=document.querySelector('.tab[data-panel="'+p+'"]'); if(t)t.style.display=ok?'':'none';};
+  tab('prod',can('prod')); tab('recetas',can('recetas')); tab('inventario',can('inventario')); tab('facturas',can('facturas'));
+  const bu=document.getElementById('btnUsuarios'); if(bu)bu.style.display=can('usuarios')?'':'none';
+  const se=document.getElementById('secEmparejar'); if(se&&!can('costos'))se.hidden=true;
+  // si el tab activo quedó oculto, ir al primero visible
+  const act=document.querySelector('.tab.active'); if(act&&getComputedStyle(act).display==='none'){ const vis=[...document.querySelectorAll('.tab')].find(t=>getComputedStyle(t).display!=='none'); if(vis)vis.click(); }
   try{ if(typeof renderRecetas==='function') renderRecetas(); }catch(e){}
 }
 function mostrarApp(){
@@ -1515,7 +1528,7 @@ async function hacerLogin(){
   if(!u||!p){ msg.textContent='Escribe usuario y PIN'; return; }
   msg.textContent='Entrando…';
   const res=await authCall({action:'login',usuario:u,pin:p});
-  if(res.ok){ try{sessionStorage.setItem('alma_user',res.usuario);sessionStorage.setItem('alma_nombre',res.nombre||res.usuario);sessionStorage.setItem('alma_rol',res.rol||'admin');}catch(e){} msg.textContent=''; document.getElementById('loginPin').value=''; mostrarApp(); }
+  if(res.ok){ try{sessionStorage.setItem('alma_user',res.usuario);sessionStorage.setItem('alma_nombre',res.nombre||res.usuario);sessionStorage.setItem('alma_rol',res.rol||'admin');sessionStorage.setItem('alma_perms',JSON.stringify(res.permisos||[]));}catch(e){} msg.textContent=''; document.getElementById('loginPin').value=''; mostrarApp(); }
   else { msg.textContent=res.error||'No se pudo entrar'; }
 }
 function salir(){ try{sessionStorage.removeItem('alma_user');sessionStorage.removeItem('alma_nombre');}catch(e){} location.reload(); }
@@ -1529,13 +1542,15 @@ async function cargarListaUsuarios(){
   const res=await authCall({action:'list',usuario:sesionUser(),pin});
   if(!res.ok){ cont.innerHTML=''; msg.textContent=res.error||'No autorizado'; return; }
   if(!res.usuarios||!res.usuarios.length){ cont.innerHTML='<div class="empty">Sin usuarios.</div>'; return; }
-  cont.innerHTML=res.usuarios.map(u=>'<div class="row" style="justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0"><span><b>'+u.usuario+'</b>'+(u.nombre&&u.nombre!==u.usuario?(' · '+u.nombre):'')+' <span class="chip-badge">'+((u.rol||'admin')==='admin'?'admin':'cocina')+'</span>'+(u.activo===false?' <span class="muted">(inactivo)</span>':'')+'</span>'+(norm2(u.usuario)===norm2(sesionUser())?'<span class="muted" style="font-size:.75rem">tú</span>':'<button class="ghost sm umDel" data-u="'+u.usuario+'">✕ borrar</button>')+'</div>').join('');
+  cont.innerHTML=res.usuarios.map(u=>'<div class="row" style="justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0"><span><b>'+u.usuario+'</b>'+(u.nombre&&u.nombre!==u.usuario?(' · '+u.nombre):'')+' '+((u.rol||'admin')==='admin'?'<span class="chip-badge">👑 admin</span>':('<span class="muted" style="font-size:.72rem">'+(((u.permisos||[]).length)?(u.permisos||[]).join(' · '):'sin permisos')+'</span>'))+(u.activo===false?' <span class="muted">(inactivo)</span>':'')+'</span>'+(norm2(u.usuario)===norm2(sesionUser())?'<span class="muted" style="font-size:.75rem">tú</span>':'<button class="ghost sm umDel" data-u="'+u.usuario+'">✕ borrar</button>')+'</div>').join('');
   cont.querySelectorAll('.umDel').forEach(b=>b.addEventListener('click',()=>borrarUsuario(b.dataset.u)));
 }
 async function agregarUsuario(){
   const pin=adminPin(); const msg=document.getElementById('umMsg');
   if(!pin){ msg.textContent='Escribe tu PIN arriba.'; return; }
-  const nu={usuario:document.getElementById('umUser').value.trim(),nombre:document.getElementById('umNom').value.trim(),pin:document.getElementById('umPin').value.trim(),rol:(document.getElementById('umRol')||{}).value||'cocina'};
+  const adminFull=(document.getElementById('umAdminFull')||{}).checked;
+  const permisos=[...document.querySelectorAll('.umP:checked')].map(c=>c.value);
+  const nu={usuario:document.getElementById('umUser').value.trim(),nombre:document.getElementById('umNom').value.trim(),pin:document.getElementById('umPin').value.trim(),rol:adminFull?'admin':'user',permisos:adminFull?null:permisos};
   if(!nu.usuario||!nu.pin){ msg.textContent='Falta usuario o PIN del nuevo.'; return; }
   msg.textContent='Guardando…';
   const res=await authCall({action:'add',usuario:sesionUser(),pin,nuevo:nu});
@@ -1558,6 +1573,7 @@ async function borrarUsuario(target){
   if(g('umClose'))g('umClose').addEventListener('click',cerrarUsuarios);
   if(g('umVer'))g('umVer').addEventListener('click',cargarListaUsuarios);
   if(g('umAdd'))g('umAdd').addEventListener('click',agregarUsuario);
+  if(g('umAdminFull'))g('umAdminFull').addEventListener('change',function(){ const box=g('umPermsBox'); if(box)box.style.opacity=this.checked?'.4':'1'; document.querySelectorAll('.umP').forEach(c=>c.disabled=this.checked); });
   if(sesionUser()) mostrarApp();
   else { g('loginOverlay').style.display='flex'; g('loginUser').focus(); }
 })();
