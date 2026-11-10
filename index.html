@@ -717,7 +717,7 @@ function priceOf(key){
 }
 let recCat='TODAS', prodCat='TODAS', recView='preparacion', recArea='TODAS';
 function esBarRec(r){ return /^(COC|SOD|VIN)-/.test(r.c) || ['COCTEL','SODA','VINO','BAR'].includes(String(r.categoria||'').toUpperCase()); }
-function catRec(r){ const c=String(r.categoria||'').toUpperCase(); if(['COCTEL','SODA','VINO'].includes(c)) return c; return catOf(r.n); }
+function catRec(r){ if(/^COC-/.test(r.c))return 'COCTEL'; if(/^SOD-/.test(r.c))return 'SODA'; if(/^VIN-/.test(r.c))return 'VINO'; const c=String(r.categoria||'').toUpperCase(); if(['COCTEL','SODA','VINO'].includes(c)) return c; return catOf(r.n); }
 function setRecView(v){ recView=v; recCat='TODAS'; recArea=(v==='plato'?'BAR':'TODAS'); document.querySelectorAll('#recvNav [data-rv]').forEach(b=>b.className=(b.dataset.rv===v?'primary sm':'ghost sm')); renderRecetas(); }
 async function moverTipo(cod,tipo,btn){
   if(btn)btn.disabled=true;
