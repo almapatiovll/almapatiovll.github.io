@@ -186,6 +186,7 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
     <button class="tab" data-panel="recetas">📖 Recetas y costos</button>
     <button class="tab" data-panel="inventario">📦 Inventarios</button>
     <button class="tab" data-panel="facturas">🧾 Facturas</button>
+    <button class="tab" data-panel="tablero">📊 Tablero</button>
   </div>
 
   <div id="panel-prod">
@@ -409,6 +410,22 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
       <div class="totbar" id="provResumen"></div>
       <div id="provList" style="display:flex;flex-direction:column;gap:10px;margin-top:10px"><div class="empty">Cargando…</div></div>
     </section>
+  </div>
+
+  <div id="panel-tablero" hidden>
+    <div class="hd" style="margin-bottom:12px"><div><h2 style="margin:0">📊 Tablero de stock</h2><p class="sub" style="margin:4px 0 0">Máximos y mínimos por proteína según la venta real (3 meses). Entra cuánto tienes y te avisa lo que está por agotarse.</p></div></div>
+    <div class="row" style="gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
+      <label class="field" style="max-width:140px">Días mínimo<input id="tbMin" type="number" step="1" value="2"></label>
+      <label class="field" style="max-width:140px">Días máximo<input id="tbMax" type="number" step="1" value="5"></label>
+      <button class="ghost sm" id="tbRecargar">↻ Recargar</button>
+      <span class="sub" style="margin-left:auto">Mín = consumo × días mínimo · Máx = consumo × días máximo</span>
+    </div>
+    <div id="tbAlertas"></div>
+    <div class="tablewrap"><table id="tbTabla"><thead><tr>
+      <th>Proteína</th><th class="num">Venta/día</th><th class="num">Porción</th><th class="num">Consumo/día</th>
+      <th class="num">Mínimo</th><th class="num">Máximo</th><th class="num">Stock hoy</th><th>Estado</th>
+    </tr></thead><tbody id="tbBody"><tr><td colspan="8" class="empty">Cargando…</td></tr></tbody></table></div>
+    <p class="sub" style="margin-top:10px">Ajusta la <b>porción</b> y el <b>stock</b> en la tabla; se guarda solo. Nota: Tabla Mixta y combos suman demanda extra, por eso los días de cobertura dan margen.</p>
   </div>
 
   <p class="sub" style="margin-top:18px">El Patio · Villa de Leyva. Los nombres y códigos vienen del maestro de producciones.</p>
@@ -711,11 +728,60 @@ document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
   document.getElementById('panel-recetas').hidden=(p!=='recetas');
   document.getElementById('panel-inventario').hidden=(p!=='inventario');
   document.getElementById('panel-facturas').hidden=(p!=='facturas');
+  document.getElementById('panel-tablero').hidden=(p!=='tablero');
   window.scrollTo(0,0);
   if(p==='recetas') cargarRecetas();
   if(p==='inventario') cargarInventario();
   if(p==='facturas') cargarFacturas();
+  if(p==='tablero') cargarTablero();
 }));
+
+/* ===== Tablero de stock ===== */
+const TREST=SB_URL+"/rest/v1/tablero_items";
+let TBITEMS=[];
+function tbDias(){ let mn=parseFloat((document.getElementById('tbMin')||{}).value); let mx=parseFloat((document.getElementById('tbMax')||{}).value); if(isNaN(mn)||mn<=0)mn=2; if(isNaN(mx)||mx<=0)mx=5; return {mn,mx}; }
+async function cargarTablero(){
+  try{ const r=await fetch(TREST+"?activo=eq.true&order=orden.asc&select=*",{headers:HDRS}); TBITEMS=r.ok?await r.json():[]; }catch(e){ TBITEMS=[]; }
+  try{ const dm=localStorage.getItem('tb_min'),dx=localStorage.getItem('tb_max'); if(dm)document.getElementById('tbMin').value=dm; if(dx)document.getElementById('tbMax').value=dx; }catch(e){}
+  renderTablero();
+}
+function renderTablero(){
+  const {mn,mx}=tbDias();
+  const body=document.getElementById('tbBody'); if(!body)return;
+  if(!TBITEMS.length){ body.innerHTML='<tr><td colspan="8" class="empty">Sin proteínas cargadas</td></tr>'; document.getElementById('tbAlertas').innerHTML=''; return; }
+  const alertas=[];
+  body.innerHTML=TBITEMS.map(it=>{
+    const porc=Number(it.porcion)||0, vd=Number(it.venta_dia)||0, stock=(it.stock==null?'':Number(it.stock));
+    const cons=+(vd*porc).toFixed(2);
+    const min=+(cons*mn).toFixed(1), max=+(cons*mx).toFixed(1);
+    const un=it.unidad||'KG';
+    let est='<span class="muted">pon stock</span>', cls='';
+    if(stock!==''){ if(stock<min){est='🔴 Pedir ya'; cls='bad'; alertas.push({n:it.nombre,stock,min,un});}
+      else if(stock<max){est='🟡 Reponer';} else {est='🟢 OK';} }
+    return '<tr data-id="'+it.id+'"'+(cls==='bad'?' style="background:rgba(226,58,46,.07)"':'')+'>'
+      +'<td><b>'+it.nombre+'</b><div class="muted" style="font-size:.72rem">'+(it.insumo||'')+'</div></td>'
+      +'<td class="num">'+vd.toFixed(1)+'</td>'
+      +'<td class="num"><input class="tbPorc" data-id="'+it.id+'" type="number" step="0.01" value="'+porc+'" style="width:70px;text-align:right"> '+un.toLowerCase()+'</td>'
+      +'<td class="num">'+cons+' '+un.toLowerCase()+'</td>'
+      +'<td class="num"><b>'+min+'</b></td>'
+      +'<td class="num">'+max+'</td>'
+      +'<td class="num"><input class="tbStock" data-id="'+it.id+'" type="number" step="0.1" value="'+stock+'" style="width:80px;text-align:right"></td>'
+      +'<td>'+est+'</td></tr>';
+  }).join('');
+  // alertas arriba
+  const al=document.getElementById('tbAlertas');
+  if(alertas.length){ al.innerHTML='<div class="totbar" style="background:rgba(226,58,46,.1);border-color:rgba(226,58,46,.3)"><b>🔴 Por agotarse ('+alertas.length+'):</b> '+alertas.map(a=>a.n+' ('+a.stock+'/'+a.min+' '+a.un.toLowerCase()+')').join(' · ')+'</div>'; }
+  else { al.innerHTML='<div class="totbar" style="background:rgba(76,166,53,.1);border-color:rgba(76,166,53,.3)">🟢 Todo con stock por encima del mínimo (o falta registrar stock).</div>'; }
+  // wire inputs
+  body.querySelectorAll('.tbPorc').forEach(i=>i.addEventListener('change',()=>tbGuardar(i.dataset.id,'porcion',i.value)));
+  body.querySelectorAll('.tbStock').forEach(i=>i.addEventListener('change',()=>tbGuardar(i.dataset.id,'stock',i.value)));
+}
+async function tbGuardar(id,campo,valor){
+  const v=(valor===''?null:Number(valor));
+  const it=TBITEMS.find(x=>String(x.id)===String(id)); if(it)it[campo]=v;
+  try{ await fetch(TREST+"?id=eq."+id,{method:"PATCH",headers:{...HDRS,"Prefer":"return=minimal"},body:JSON.stringify({[campo]:v,actualizado:new Date().toISOString()})}); }catch(e){}
+  renderTablero();
+}
 
 /* ===== Recetas y costos ===== */
 const uDiv=u=>{u=(u||'').toLowerCase();return (u==='g'||u==='gr'||u==='grs'||u==='ml')?1000:1;};
@@ -1508,7 +1574,7 @@ function aplicarRol(){
   const admin=esAdmin();
   try{document.body.setAttribute('data-rol',admin?'admin':'user');}catch(e){}
   const tab=(p,ok)=>{const t=document.querySelector('.tab[data-panel="'+p+'"]'); if(t)t.style.display=ok?'':'none';};
-  tab('prod',can('prod')); tab('recetas',can('recetas')); tab('inventario',can('inventario')); tab('facturas',can('facturas'));
+  tab('prod',can('prod')); tab('recetas',can('recetas')); tab('inventario',can('inventario')); tab('facturas',can('facturas')); tab('tablero',can('tablero'));
   const bu=document.getElementById('btnUsuarios'); if(bu)bu.style.display=can('usuarios')?'':'none';
   const se=document.getElementById('secEmparejar'); if(se&&!can('costos'))se.hidden=true;
   // si el tab activo quedó oculto, ir al primero visible
@@ -1573,6 +1639,8 @@ async function borrarUsuario(target){
   if(g('umClose'))g('umClose').addEventListener('click',cerrarUsuarios);
   if(g('umVer'))g('umVer').addEventListener('click',cargarListaUsuarios);
   if(g('umAdd'))g('umAdd').addEventListener('click',agregarUsuario);
+  ['tbMin','tbMax'].forEach(id=>{ if(g(id))g(id).addEventListener('change',function(){ try{localStorage.setItem(id==='tbMin'?'tb_min':'tb_max',this.value);}catch(e){} renderTablero(); }); });
+  if(g('tbRecargar'))g('tbRecargar').addEventListener('click',cargarTablero);
   if(g('umAdminFull'))g('umAdminFull').addEventListener('change',function(){ const box=g('umPermsBox'); if(box)box.style.opacity=this.checked?'.4':'1'; document.querySelectorAll('.umP').forEach(c=>c.disabled=this.checked); });
   if(sesionUser()) mostrarApp();
   else { g('loginOverlay').style.display='flex'; g('loginUser').focus(); }
