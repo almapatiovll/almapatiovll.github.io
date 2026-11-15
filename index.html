@@ -421,7 +421,7 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
         <label class="field">Fecha<input id="fFecha" type="date"></label>
       </div>
       <div class="tablewrap" style="margin-top:12px"><table>
-        <thead><tr><th>Producto</th><th class="num">Cant.</th><th>Unidad</th><th class="num">Precio unit.</th><th class="num">Unidades / piezas que llegaron</th><th class="num">$ / unidad</th><th class="num">Total</th><th></th></tr></thead>
+        <thead><tr><th>Producto</th><th class="num">Cant.</th><th>Unidad</th><th class="num">Precio unit.</th><th class="num">Cant. que llegó (uso)</th><th class="num">$ / unidad uso</th><th class="num">Total</th><th></th></tr></thead>
         <tbody id="factItems"></tbody>
         <tfoot><tr><th colspan="6" style="text-align:right">Total factura</th><th class="num" id="fTotal">$0</th><th></th></tr></tfoot>
       </table></div>
@@ -1471,26 +1471,50 @@ function llenarRevFactura(obj){
   if(!factRev.length) factRev=[{producto:'',cantidad:'',unidad:'',precio:'',total:''}];
   renderFactItems();
 }
+const INGSMAP={}; try{ INGS.forEach(i=>{ INGSMAP[norm(i.n)]=i; }); }catch(e){}
+function matchIng(nombre){ const k=norm(nombre||''); if(!k)return null; if(INGSMAP[k])return INGSMAP[k];
+  let best=null,bl=0;
+  for(const it of INGS){ const n=norm(it.n); if(!n||n.length<3)continue; let hit=(k===n);
+    if(!hit){ try{ hit=new RegExp('(^| )'+n.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'( |$)').test(k); }catch(e){ hit=(k.indexOf(n)>=0); } }
+    if(hit && n.length>bl){ best=it; bl=n.length; } }
+  return best; }
+function usoDe(nombre){ const i=matchIng(nombre); if(!i)return null; const b=String(i.b||'').toLowerCase(); if(b==='kg')return 'KG'; if(b==='l')return 'LT'; return 'UND'; }
+function presentKg(nombre){ const s=String(nombre||'').toLowerCase().replace(/,/g,'.'); let m;
+  if(m=s.match(/(\d+(?:\.\d+)?)\s*kg\b/)) return parseFloat(m[1]);
+  if(m=s.match(/(\d+(?:\.\d+)?)\s*(?:grs|gramos|gr|g)\b/)) return parseFloat(m[1])/1000;
+  if(/\bkg\b/.test(s)) return 1;
+  if(m=s.match(/\b(\d{3,4})\b/)) return parseFloat(m[1])/1000;
+  return null; }
+function esUndCompra(u){ return /^(und|un|u|unidad|unidades|pieza|piezas|pza|pzas|paquete|paq|bolsa|caja)s?\.?$/i.test(String(u||'').trim()) || String(u||'').trim()===''; }
 function renderFactItems(){
   const b=document.getElementById('factItems'); b.innerHTML='';
   factRev.forEach((it,i)=>{
+    if(it.usoUnidad==null){ it.usoUnidad = usoDe(it.producto) || ''; }
+    const _uso = it.usoUnidad || '';
+    const _conv = (_uso==='KG'||_uso==='LT') && esUndCompra(it.unidad);
+    if(_conv && (it.porc==null||it.porc==='')){ const pk=presentKg(it.producto); const c=Number(it.cantidad); if(pk&&c){ it.porc=+(c*pk).toFixed(3); } }
+    const _falta = _conv && (it.porc==null||it.porc==='');
     const pu=costoPorciones(it);
     const tr=document.createElement('tr');
     tr.innerHTML='<td><input list="insumosList" value="'+String(it.producto||'').replace(/"/g,'&quot;')+'" data-i="'+i+'" data-k="producto" style="min-width:140px"></td>'
       +'<td class="num"><input type="number" step="any" value="'+(it.cantidad!=null?it.cantidad:'')+'" data-i="'+i+'" data-k="cantidad" style="width:64px;text-align:right"></td>'
       +'<td><input value="'+String(it.unidad||'').replace(/"/g,'&quot;')+'" data-i="'+i+'" data-k="unidad" style="width:56px" title="unidad de compra (kg, L, und...)"></td>'
       +'<td class="num"><input type="number" step="any" value="'+(it.precio!=null?it.precio:'')+'" data-i="'+i+'" data-k="precio" style="width:88px;text-align:right" title="precio por la unidad de compra"></td>'
-      +'<td class="num"><input type="number" step="any" placeholder="—" value="'+(it.porc!=null?it.porc:'')+'" data-i="'+i+'" data-k="porc" style="width:76px;text-align:right" title="cuántas unidades/piezas llegaron (ej. 120 mojarras en 50 kg)"></td>'
-      +'<td class="num costuso" style="font-weight:600;color:var(--brand-ink,#1f3a2e)">'+(pu!=null?('$'+fmtN(pu)):'<span class="muted">—</span>')+'</td>'
+      +'<td class="num"><input type="number" step="any" placeholder="'+(_conv?'kg/L reales':'—')+'" value="'+(it.porc!=null?it.porc:'')+'" data-i="'+i+'" data-k="porc" style="width:66px;text-align:right'+(_falta?';background:#FFF4C2;border:1px solid #E8871E':'')+'" title="cuánto llegó en la unidad de USO (ej. 2 und de 907 g = 1,814 kg)"> <select data-i="'+i+'" data-k="usoUnidad" style="width:50px" title="unidad en que se usa/costea">'+['','UND','KG','LT'].map(u=>'<option value="'+u+'"'+(u===_uso?' selected':'')+'>'+(u||'—')+'</option>').join('')+'</select>'+(_falta?'<div class="sub" style="font-size:.66rem;color:#c0491f;margin-top:2px">¿cuántos '+_uso.toLowerCase()+' llegaron?</div>':'')+'</td>'
+      +'<td class="num costuso" style="font-weight:600;color:var(--brand-ink,#1f3a2e)">'+(pu!=null?('$'+fmtN(pu)+(_uso?(' /'+_uso.toLowerCase()):'')):'<span class="muted">—</span>')+'</td>'
       +'<td class="num"><input type="number" step="any" value="'+(it.total!=null?it.total:'')+'" data-i="'+i+'" data-k="total" style="width:88px;text-align:right"></td>'
       +'<td><button class="ghost sm" data-del="'+i+'">✕</button></td>';
     b.appendChild(tr);
   });
   b.querySelectorAll('input').forEach(inp=>inp.addEventListener('input',()=>{
     const it=factRev[inp.dataset.i]; it[inp.dataset.k]=inp.value;
-    if(['precio','cantidad','total','porc'].includes(inp.dataset.k)){ const pu=costoPorciones(it); const cell=inp.closest('tr').querySelector('.costuso'); if(cell)cell.innerHTML=(pu!=null?('$'+fmtN(pu)):'<span class="muted">—</span>'); }
+    if(['precio','cantidad','total','porc'].includes(inp.dataset.k)){ const pu=costoPorciones(it); const cell=inp.closest('tr').querySelector('.costuso'); const uu=it.usoUnidad||''; if(cell)cell.innerHTML=(pu!=null?('$'+fmtN(pu)+(uu?(' /'+uu.toLowerCase()):'')):'<span class="muted">—</span>'); }
     factTotal();
   }));
+  // al cambiar el producto o la unidad de compra, re-detectar la unidad de uso
+  b.querySelectorAll('input[data-k="producto"],input[data-k="unidad"]').forEach(inp=>inp.addEventListener('change',()=>{ const it=factRev[inp.dataset.i]; if(inp.dataset.k==='producto') it.usoUnidad=null; renderFactItems(); }));
+  // selector de unidad de uso (KG/LT/UND)
+  b.querySelectorAll('select[data-k="usoUnidad"]').forEach(sel=>sel.addEventListener('change',()=>{ const it=factRev[sel.dataset.i]; it.usoUnidad=sel.value; if(!sel.value){/*nada*/} else { it.porc=''; } renderFactItems(); }));
   b.querySelectorAll('[data-del]').forEach(x=>x.addEventListener('click',()=>{ factRev.splice(Number(x.dataset.del),1); if(!factRev.length)factRev=[{producto:'',cantidad:'',unidad:'',precio:'',total:''}]; renderFactItems(); }));
   factTotal();
 }
@@ -1510,7 +1534,7 @@ async function guardarFactura(){
   const msg=document.getElementById('factGuardMsg');
   const prov=document.getElementById('fProv').value.trim();
   if(!prov){ msg.textContent='Ponle el proveedor'; return; }
-  const items=factRev.filter(it=>String(it.producto||'').trim()).map(it=>{ const pu=costoPorciones(it); return {producto:String(it.producto).trim().toUpperCase(),cantidad:num(it.cantidad),unidad:it.unidad||'',precioUnit:num(it.precio),total:num(it.total),porciones:num(it.porc),unidadUso:(num(it.porc)?'UND':null),precioUso:pu}; });
+  const items=factRev.filter(it=>String(it.producto||'').trim()).map(it=>{ const pu=costoPorciones(it); return {producto:String(it.producto).trim().toUpperCase(),cantidad:num(it.cantidad),unidad:it.unidad||'',precioUnit:num(it.precio),total:num(it.total),porciones:num(it.porc),unidadUso:(num(it.porc)?(it.usoUnidad||usoDe(it.producto)||'UND'):null),precioUso:pu}; });
   const total=factTotal();
   const body={proveedor:prov.toUpperCase(),nit:document.getElementById('fNit').value.trim()||null,numero:document.getElementById('fNum').value.trim()||null,fecha:document.getElementById('fFecha').value||null,total:Math.round(total)||null,items,tipo_doc:(document.getElementById('fTipoDoc')||{}).value||'factura'};
   msg.textContent='Guardando…';
@@ -1544,7 +1568,7 @@ function editarFactura(id){
   document.getElementById('fNum').value=f.numero||'';
   document.getElementById('fFecha').value=f.fecha||'';
   const td=document.getElementById('fTipoDoc'); if(td)td.value=f.tipo_doc||'factura';
-  factRev=(f.items||[]).map(it=>({producto:it.producto||'',cantidad:it.cantidad,unidad:it.unidad||'',precio:it.precioUnit,porc:it.porciones,total:it.total}));
+  factRev=(f.items||[]).map(it=>({producto:it.producto||'',cantidad:it.cantidad,unidad:it.unidad||'',precio:it.precioUnit,porc:it.porciones,usoUnidad:it.unidadUso||null,total:it.total}));
   if(!factRev.length) factRev=[{producto:'',cantidad:'',unidad:'',precio:'',porc:'',total:''}];
   renderFactItems();
   const sec=document.getElementById('secRevFact'); sec.hidden=false; sec.scrollIntoView({behavior:'smooth'});
