@@ -443,6 +443,7 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
         <button class="ghost sm" id="btnRefFact">↻</button>
       </div>
       <div class="totbar" id="factResumen"></div>
+      <div id="factPrecio" style="margin-top:10px"></div>
       <div id="factList" style="display:flex;flex-direction:column;gap:10px;margin-top:10px"><div class="empty">Cargando…</div></div>
     </section>
 
@@ -468,6 +469,7 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
       <span class="sub" style="margin-left:auto">Mín = consumo × días mínimo · Máx = consumo × días máximo</span>
     </div>
     <div id="tbAlertas"></div>
+    <div id="tbPrecios"></div>
     <div class="tablewrap"><table id="tbTabla"><thead><tr>
       <th>Proteína</th><th class="num">Venta/día</th><th class="num">Porción</th><th class="num">Consumo/día</th>
       <th class="num">Mínimo</th><th class="num">Máximo</th><th class="num">Stock hoy</th><th>Estado</th>
@@ -795,11 +797,24 @@ function tbDias(){ let mn=parseFloat((document.getElementById('tbMin')||{}).valu
 async function cargarTablero(){
   try{ const r=await fetch(TREST+"?activo=eq.true&order=orden.asc&select=*",{headers:HDRS}); TBITEMS=r.ok?await r.json():[]; }catch(e){ TBITEMS=[]; }
   try{ const dm=localStorage.getItem('tb_min'),dx=localStorage.getItem('tb_max'); if(dm)document.getElementById('tbMin').value=dm; if(dx)document.getElementById('tbMax').value=dx; }catch(e){}
+  if(!FACT.length){ try{ const r=await fetch(FREST+"?select=*&order=fecha.desc,creado_en.desc&limit=500",{headers:HDRS}); FACT=r.ok?await r.json():[]; }catch(e){} }
   renderTablero();
+}
+// Productos que cambiaron de precio en su compra más reciente (para el tablero)
+function renderAlertasPrecio(){
+  const box=document.getElementById('tbPrecios'); if(!box)return;
+  const H=histPrecios();
+  const movs=[];
+  Object.values(H).forEach(h=>{ const dd=deltaProducto(h.compras); if(dd && Math.abs(dd.pct)>=5){ movs.push({nombre:h.nombre, pct:dd.pct, de:dd.prev.price, a:dd.last.price, um:dd.last.um, fecha:dd.last.fecha}); } });
+  if(!movs.length){ box.innerHTML=''; return; }
+  movs.sort((a,b)=>Math.abs(b.pct)-Math.abs(a.pct));
+  const chip=m=>{ const up=m.pct>0; return '<span style="display:inline-block;margin:2px 6px 2px 0;padding:3px 8px;border-radius:8px;background:'+(up?'rgba(226,58,46,.12)':'rgba(76,166,53,.12)')+';color:'+(up?'#e23a2e':'#4ca635')+';font-weight:700;font-size:.8rem">'+(up?'▲':'▼')+' '+m.nombre+' '+Math.abs(m.pct).toFixed(0)+'% <span style="font-weight:500;opacity:.8">($'+fmtN(m.de)+'→$'+fmtN(m.a)+'/'+(m.um||'und')+')</span></span>'; };
+  box.innerHTML='<div class="totbar" style="display:block;background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.3)"><b>⚠ Cambios de precio ('+movs.length+'):</b><div style="margin-top:6px">'+movs.slice(0,12).map(chip).join('')+'</div></div>';
 }
 function renderTablero(){
   const {mn,mx}=tbDias();
   const body=document.getElementById('tbBody'); if(!body)return;
+  renderAlertasPrecio();
   if(!TBITEMS.length){ body.innerHTML='<tr><td colspan="8" class="empty">Sin proteínas cargadas</td></tr>'; document.getElementById('tbAlertas').innerHTML=''; return; }
   const alertas=[];
   body.innerHTML=TBITEMS.map(it=>{
@@ -1608,6 +1623,53 @@ function editarFactura(id){
   const sec=document.getElementById('secRevFact'); sec.hidden=false; sec.scrollIntoView({behavior:'smooth'});
   document.getElementById('factGuardMsg').textContent='Editando factura — cambia lo que necesites y Guardar.';
 }
+// Precio comparable de un item = $/unidad de uso (precioUso); si no, precio de compra
+function precioComparable(it){
+  let p=Number(it.precioUso), um=(it.unidadUso||'').toString();
+  if(!(p>0)){ p=Number(it.precioUnit); um=(it.unidad||'').toString(); }
+  return (p>0)?{price:p,um:(um||'und').toLowerCase()}:null;
+}
+// Historial de precios por producto, ordenado por fecha
+function histPrecios(){
+  const H={};
+  FACT.forEach(f=>{ (f.items||[]).forEach(it=>{
+    const nm=(it.producto||'').trim(); if(!nm)return;
+    const pc=precioComparable(it); if(!pc)return;
+    const k=norm(nm);
+    if(!H[k]) H[k]={nombre:nm,compras:[]};
+    H[k].compras.push({fecha:f.fecha||'',prov:f.proveedor||'—',price:pc.price,um:pc.um});
+  }); });
+  Object.values(H).forEach(h=>h.compras.sort((a,b)=>(a.fecha<b.fecha?-1:a.fecha>b.fecha?1:0)));
+  return H;
+}
+// Variación del último precio vs la compra anterior con la misma unidad
+function deltaProducto(cs){
+  if(!cs||cs.length<2) return null;
+  const last=cs[cs.length-1]; let prev=null;
+  for(let i=cs.length-2;i>=0;i--){ if(cs[i].um===last.um){prev=cs[i];break;} }
+  if(!prev||!(prev.price>0)) return null;
+  return {last,prev,pct:(last.price-prev.price)/prev.price*100};
+}
+function renderPanelPrecio(q){
+  const pp=document.getElementById('factPrecio'); if(!pp)return;
+  if(!q){ pp.innerHTML=''; return; }
+  const H=histPrecios();
+  const hits=Object.values(H).filter(h=>norm(h.nombre).includes(q)).sort((a,b)=>a.nombre.localeCompare(b.nombre)).slice(0,12);
+  if(!hits.length){ pp.innerHTML=''; return; }
+  pp.innerHTML=hits.map(h=>{
+    const cs=h.compras, last=cs[cs.length-1], prices=cs.map(c=>c.price);
+    const avg=prices.reduce((a,b)=>a+b,0)/prices.length, mn=Math.min(...prices), mx=Math.max(...prices);
+    const dd=deltaProducto(cs); let deltaHtml='';
+    if(dd){ const up=dd.pct>0.5, dn=dd.pct<-0.5;
+      deltaHtml=' <span style="font-weight:800;color:'+(up?'#e23a2e':dn?'#4ca635':'var(--muted)')+'">'+(up?'▲':dn?'▼':'•')+' '+Math.abs(dd.pct).toFixed(0)+'%</span> <span class="muted" style="font-size:.72rem">vs $'+fmtN(dd.prev.price)+'</span>'; }
+    const rows=cs.slice().reverse().map(c=>'<tr><td>'+(c.fecha||'')+'</td><td>'+c.prov+'</td><td class="num">$'+fmtN(c.price)+'/'+(c.um||'und')+'</td></tr>').join('');
+    return '<div class="totbar" style="display:block;margin-bottom:10px">'
+      +'<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;align-items:baseline"><b>'+h.nombre+'</b>'
+      +'<span>último <b>$'+fmtN(last.price)+'/'+(last.um||'und')+'</b>'+deltaHtml+'</span></div>'
+      +'<div class="muted" style="font-size:.78rem;margin-top:4px">promedio $'+fmtN(avg)+' · mín $'+fmtN(mn)+' · máx $'+fmtN(mx)+' · '+cs.length+' compra'+(cs.length===1?'':'s')+'</div>'
+      +'<div class="tablewrap" style="margin-top:8px"><table><thead><tr><th>Fecha</th><th>Proveedor</th><th class="num">Precio</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+  }).join('');
+}
 function renderFacturas(){
   const q=norm(document.getElementById('buscarFact').value);
   const provF=(document.getElementById('factProvF')||{}).value||'';
@@ -1621,6 +1683,7 @@ function renderFacturas(){
   FACT.forEach(f=>{ const p=(f.proveedor||'—').trim(); const k=normProv(p)||'—'; if(!byProv[k])byProv[k]={n:p,t:0}; byProv[k].t+=(Number(f.total)||0); gt+=Number(f.total)||0; });
   const provParts=Object.values(byProv).sort((a,b)=>b.t-a.t).slice(0,6).map(e=>e.n+': <b>$'+fmtN(e.t)+'</b>');
   document.getElementById('factResumen').innerHTML='Total compras: <b>$'+fmtN(gt)+'</b> · '+FACT.length+' facturas'+(provParts.length?(' · '+provParts.join(' · ')):'');
+  renderPanelPrecio(q);
   const el=document.getElementById('factList');
   if(!list.length){ el.innerHTML='<div class="empty">Sin facturas aún. Sube la primera con la foto.</div>'; return; }
   el.innerHTML='';
