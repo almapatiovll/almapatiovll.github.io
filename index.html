@@ -307,6 +307,16 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
     </div>
   </section>
 
+  <!-- REVISIÓN RECETA ↔ PRODUCCIÓN -->
+  <section class="card" style="border-top:4px solid var(--blue,#3b82f6)">
+    <div class="rev-head"><div><h2>🔬 Revisión receta ↔ producción</h2><p class="sub">Cada cosa que se produce, cruzada con su receta: rinde real vs teórico, costo por porción y qué falta para que el costeo salga exacto. Lo ideal: toda producción ligada a una receta.</p></div><button class="ghost sm" id="btnRefRevProd">↻</button></div>
+    <div class="totbar" id="revProdResumen" style="margin:10px 0"></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Preparación</th><th class="num">Tandas</th><th class="num">Rinde real</th><th class="num">Merma</th><th class="num">Receta rinde</th><th class="num">Costo receta</th><th class="num">$/porción</th><th>⚠ Revisar</th></tr></thead>
+      <tbody id="revProdBody"><tr><td colspan="8"><div class="empty">Abre esta pestaña para calcular.</div></td></tr></tbody>
+    </table></div>
+  </section>
+
   </div><!-- /panel-prod -->
 
   <div id="panel-recetas" hidden>
@@ -536,7 +546,7 @@ async function insertProd(rows){const r=await fetch(REST,{method:"POST",headers:
 async function delProd(id){const r=await fetch(REST+"?id=eq."+encodeURIComponent(id),{method:"DELETE",headers:HDRS});if(!r.ok)throw new Error("del "+r.status);}
 
 async function refresh(){
-  try{ saved=await listProd(); setConn(true); renderTable(); renderProdAvg(); }
+  try{ saved=await listProd(); setConn(true); renderTable(); renderProdAvg(); try{renderRevisionProd();}catch(e){} }
   catch(e){ setConn(false); $("emptyRow").textContent="No se pudo conectar a los datos."; }
 }
 function setConn(ok){const c=$("conn");c.innerHTML=`<span class="dot ${ok?'ok':'bad'}"></span>${ok?'conectado':'sin conexión'}`;}
@@ -777,6 +787,46 @@ function renderProdAvg(){
   if(!rows.length){tb.innerHTML=`<tr><td colspan="6"><div class="empty">Aún sin datos.</div></td></tr>`;return;}
   tb.innerHTML=rows.map(([k,a])=>{const rend=a.w&&a.pi>0?a.pf/a.pi:null;const cls=rend==null?"":(rend>=0.95?"ok":(rend>=0.5?"warn":"bad"));return `<tr><td>${k}</td><td>${a.name||""}</td><td class="num">${a.n}</td><td class="num">${a.pi?fmtN(a.pi):""}</td><td class="num">${a.pf?fmtN(a.pf):""}</td><td class="num">${rend==null?"":`<span class="pill ${cls}">${(rend*100).toFixed(0)}%</span>`}</td></tr>`;}).join("");
 }
+// ===== Revisión receta <-> producción =====
+function pesoG(v){ if(v==null||v==='')return null; const n=Number(v); if(isNaN(n))return null; return n<100?n*1000:n; } // <100 se asume kg mal escalado a g
+function renderRevisionProd(){
+  const body=document.getElementById('revProdBody'); if(!body)return;
+  const recs=recetasAll(); const byCode={},byName={};
+  recs.forEach(r=>{ if(r.c)byCode[r.c]=r; byName[norm(r.n)]=r; });
+  const g={};
+  (saved||[]).forEach(r=>{ const nm=(r.preparacion||'').trim(); if(!nm)return; const k=norm(nm);
+    const o=g[k]||(g[k]={nombre:nm,codigo:r.codigo||'',n:0,pi:0,pf:0,w:0,sinPI:0,kg:false,ult:''});
+    o.n++; const pi=r.peso_inicial,pf=r.peso_final;
+    if(pi==null||pi==='')o.sinPI++; else if(Number(pi)<100)o.kg=true;
+    if(pf!=null&&pf!==''&&Number(pf)<100)o.kg=true;
+    const gi=pesoG(pi),gf=pesoG(pf); if(gi!=null&&gf!=null){ o.pi+=gi; o.pf+=gf; o.w++; }
+    if((r.fecha||'')>=o.ult){ o.ult=r.fecha||''; if(r.codigo)o.codigo=r.codigo; }
+  });
+  const arr=Object.values(g).sort((a,b)=>b.n-a.n);
+  let sinRec=0,sinRinde=0,kgMal=0,sinPI=0;
+  body.innerHTML=arr.map(o=>{
+    const rec=(o.codigo&&byCode[o.codigo])||byName[norm(o.nombre)];
+    const rindeReal=(o.w&&o.pi>0)?(o.pf/o.pi):null;
+    const merma=rindeReal!=null?(1-rindeReal):null;
+    const flags=[];
+    if(!rec){flags.push('sin receta');sinRec++;}
+    else if(!(Number(rec.rend)>0)){flags.push('receta sin rinde');sinRinde++;}
+    if(o.sinPI===o.n){flags.push('sin peso inicial');sinPI++;}
+    if(o.kg){flags.push('¿peso en kg?');kgMal++;}
+    let cRec=null,cPorc=null;
+    if(rec){ const cc=costoReceta(rec.items||[]); cRec=cc.tot; const rr=Number(rec.rend); if(rr>0)cPorc=Math.round(cc.tot/rr); }
+    return '<tr><td><b>'+escH(o.nombre)+'</b>'+(o.codigo?' <span class="muted" style="font-size:.7rem">'+escH(o.codigo)+'</span>':'')+'</td>'
+      +'<td class="num">'+o.n+'</td>'
+      +'<td class="num">'+(rindeReal!=null?(rindeReal*100).toFixed(0)+'%':'<span class="muted">—</span>')+'</td>'
+      +'<td class="num">'+(merma!=null?(merma*100).toFixed(0)+'%':'')+'</td>'
+      +'<td class="num">'+(rec?(Number(rec.rend)>0?fmtN(rec.rend):'<span style="color:#e23a2e">—</span>'):'')+'</td>'
+      +'<td class="num">'+(cRec!=null?'$'+fmtN(cRec):'')+'</td>'
+      +'<td class="num">'+(cPorc!=null?'$'+fmtN(cPorc):'')+'</td>'
+      +'<td>'+(flags.length?flags.map(f=>'<span style="color:#f59e0b;font-weight:600;font-size:.73rem">'+f+'</span>').join(' · '):'<span style="color:#4ca635">✓ ok</span>')+'</td></tr>';
+  }).join('')||'<tr><td colspan="8"><div class="empty">Sin producciones cargadas.</div></td></tr>';
+  document.getElementById('revProdResumen').innerHTML='<b>'+arr.length+'</b> ítems producidos · <b style="color:#e23a2e">'+sinRec+'</b> sin receta ligada · <b style="color:#f59e0b">'+sinRinde+'</b> receta sin rinde · <b style="color:#f59e0b">'+sinPI+'</b> sin peso inicial · <b style="color:#f59e0b">'+kgMal+'</b> con peso dudoso (kg/g)';
+}
+(function(){ const b=document.getElementById('btnRefRevProd'); if(b)b.addEventListener('click',async()=>{ b.textContent='…'; try{ await cargarRecetas(); saved=await listProd(); }catch(e){} renderRevisionProd(); b.textContent='↻'; }); })();
 function toToteatCSV(){
   const rows=filtered();const pmap={};for(const p of PRODS)pmap[p.c]=p;
   const head=["Fecha","Id Producto","Nombre Producto","Cantidad","Unidad","Porciones","Peso final (kg)","Responsable"];
