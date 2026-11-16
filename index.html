@@ -322,10 +322,17 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
       <div class="row" style="margin:10px 0"><button class="primary sm" id="empConfAll">✓ Confirmar todas las sugeridas</button><span id="empMsg" class="muted" style="font-size:.82rem"></span></div>
       <div id="empList"><div class="empty">Cargando…</div></div>
     </section>
+    <section class="card" id="secDiag" hidden style="border-top:4px solid var(--warn-ink,#f59e0b)">
+      <div class="rev-head">
+        <div><h2>🔍 Diagnóstico de costeo</h2><p class="sub">Dónde la app NO está costeando bien: ítems de receta que no empatan con ningún insumo (se van en $0 callado), insumos en $0 y preparaciones sin receta. Arregla esto y el costeo + el juego de inventarios quedan exactos.</p></div>
+        <button class="ghost sm" id="diagToggle">Ocultar</button>
+      </div>
+      <div id="diagBody"><div class="empty">Calculando…</div></div>
+    </section>
     <section class="card step">
       <div class="rev-head">
         <div><h2>Recetas y costos</h2><p class="sub">Todas las preparaciones con sus ingredientes, costo estimado y pasos. Cocina y oficina pueden cargar nuevas.</p></div>
-        <div class="row"><button class="primary sm" id="btnNueva">＋ Nueva receta</button></div>
+        <div class="row"><button class="ghost sm" id="btnDiag">🔍 Revisar costos</button><button class="primary sm" id="btnNueva">＋ Nueva receta</button></div>
       </div>
       <div class="row" style="margin:12px 0">
         <input id="buscarRec" placeholder="Buscar receta o ingrediente…" style="flex:1;min-width:160px">
@@ -853,12 +860,18 @@ async function tbGuardar(id,campo,valor){
 /* ===== Recetas y costos ===== */
 const uDiv=u=>{u=(u||'').toLowerCase();return (u==='g'||u==='gr'||u==='grs'||u==='ml')?1000:1;};
 let ALIAS={};
+let COSTIDX=null;
+function costIdx(){ if(COSTIDX)return COSTIDX; COSTIDX={}; try{
+  Object.values(TOTEAT).forEach(v=>{ const k=norm(v.n); if(k&&!(k in COSTIDX))COSTIDX[k]=v; });
+  Object.values(COSTMAP).forEach(v=>{ const k=norm(v.n); if(k)COSTIDX[k]=v; }); // COSTMAP manda
+}catch(e){} return COSTIDX; }
 function priceOf(key){
   const a=ALIAS[key];
   if(a && a.conf && a.dest && TOTEAT[a.dest]) return TOTEAT[a.dest]; // emparejamiento confirmado manda
   if(COSTMAP[key]) return COSTMAP[key];
   if(a && a.dest && TOTEAT[a.dest]) return TOTEAT[a.dest];
   if(TOTEAT[key]) return TOTEAT[key];
+  const ci=costIdx(); if(ci[key]) return ci[key]; // empata por nombre real (arregla ñ y tildes de las llaves viejas)
   return null;
 }
 let recCat='TODAS', prodCat='TODAS', recView='preparacion', recArea='TODAS';
@@ -995,6 +1008,54 @@ function recetasAll(){
   const base=RECETAS.map(r=> over[r.c]?Object.assign({},over[r.c],{esEdit:true}):r );
   const extra=Object.values(over).filter(o=>!baseCodes.has(o.c));
   return extra.concat(base);
+}
+// ===== Diagnóstico de costeo: dónde la app no costea bien =====
+function diagDatos(){
+  const recs=recetasAll();
+  const recNames=new Set(recs.map(x=>norm(x.n)));
+  const sinCostear=[]; const usados={};
+  recs.forEach(r=>{
+    const problemas=[]; let tot=0;
+    (r.items||[]).forEach(it=>{
+      const ing=(it.i!=null?it.i:it.ing), q=(it.q!=null?it.q:it.qty), u=(it.u!=null?it.u:it.un);
+      if(!ing)return;
+      const k=norm(ing);
+      if(!(k in usados)){ const p=priceOf(k); usados[k]={name:ing,cost:p?Number(p.c):null}; }
+      const lc=costoItem(ing,q,u);
+      if(lc==null){
+        const p=priceOf(k), isSub=recNames.has(k), sinQty=(q==null||q===''||isNaN(q));
+        const causa=(!p&&!isSub)?'no empata':(sinQty?'sin cantidad':'sub-receta $0');
+        problemas.push({ing,causa});
+      } else tot+=lc;
+    });
+    if(problemas.length||!(tot>0)){ sinCostear.push({n:r.n,tipo:(r.tipo||'preparacion'),problemas,tot:Math.round(tot)}); }
+  });
+  const enCero=Object.values(usados).filter(u=>u.cost!=null&&!(u.cost>0));
+  return {sinCostear,enCero,total:recs.length};
+}
+function diagTag(causa){
+  const col=causa==='no empata'?'#e23a2e':(causa==='sin cantidad'?'#f59e0b':'#8a6d3b');
+  return '<span style="color:'+col+';font-size:.72rem;font-weight:700">('+causa+')</span>';
+}
+function renderDiagnostico(){
+  const box=document.getElementById('diagBody'); if(!box)return;
+  if(!recetasAll().length){ box.innerHTML='<div class="empty">No hay recetas cargadas aún.</div>'; return; }
+  const d=diagDatos();
+  d.sinCostear.sort((a,b)=>(b.falta.length-a.falta.length)||(a.tot-b.tot));
+  const okN=d.total-d.sinCostear.length;
+  if(!d.sinCostear.length && !d.enCero.length){ box.innerHTML='<div class="totbar" style="background:rgba(76,166,53,.12);border-color:rgba(76,166,53,.35)">🟢 Todo costea completo — '+d.total+' recetas sin huecos.</div>'; return; }
+  let html='<div class="totbar" style="background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.35)"><b>'+okN+'/'+d.total+'</b> recetas costean completo · <b style="color:#e23a2e">'+d.sinCostear.length+'</b> con problemas · <b style="color:#e23a2e">'+d.enCero.length+'</b> insumos en $0</div>';
+  if(d.sinCostear.length){
+    html+='<h3 style="margin:14px 0 6px;font-size:1rem">Recetas con ítems sin costear <span class="muted" style="font-weight:400;font-size:.8rem">(se van en $0 callado)</span></h3>';
+    html+='<div class="tablewrap"><table><thead><tr><th>Receta</th><th>Tipo</th><th class="num">Costo hoy</th><th>Falta costear</th></tr></thead><tbody>';
+    html+=d.sinCostear.map(r=>'<tr><td><b>'+escH(r.n)+'</b></td><td>'+(r.tipo==='plato'?'🍽️ plato':'🧪 prep')+'</td><td class="num">'+(r.tot>0?'$'+fmtN(r.tot):'<span style="color:#e23a2e;font-weight:800">$0</span>')+'</td><td>'+(r.problemas.length?r.problemas.map(pr=>escH(pr.ing)+' '+diagTag(pr.causa)).join(', '):'<span class="muted">receta vacía o sin rinde</span>')+'</td></tr>').join('');
+    html+='</tbody></table></div>';
+  }
+  if(d.enCero.length){
+    html+='<h3 style="margin:14px 0 6px;font-size:1rem">Insumos usados con costo $0 <span class="muted" style="font-weight:400;font-size:.8rem">(ponles precio en el catálogo)</span></h3>';
+    html+='<div class="totbar" style="display:block">'+d.enCero.map(u=>escH(u.name)).join(' · ')+'</div>';
+  }
+  box.innerHTML=html;
 }
 function renderRecetas(){
   const q=norm(document.getElementById('buscarRec').value);
@@ -1158,6 +1219,10 @@ async function guardarReceta(){
 document.getElementById('buscarRec').addEventListener('input',renderRecetas);
 document.getElementById('btnRefRec').addEventListener('click',cargarRecetas);
 document.querySelectorAll('#recvNav [data-rv]').forEach(b=>b.addEventListener('click',()=>setRecView(b.dataset.rv)));
+(function(){const g=id=>document.getElementById(id);
+  if(g('btnDiag'))g('btnDiag').addEventListener('click',()=>{ const s=g('secDiag'); s.hidden=false; renderDiagnostico(); s.scrollIntoView({behavior:'smooth',block:'start'}); });
+  if(g('diagToggle'))g('diagToggle').addEventListener('click',()=>{ g('secDiag').hidden=true; });
+})();
 (function(){const g=id=>document.getElementById(id);
   if(g('empConfAll'))g('empConfAll').addEventListener('click',confirmarTodasSugeridas);
   if(g('empToggle'))g('empToggle').addEventListener('click',()=>{const l=g('empList');const show=l.style.display==='none';l.style.display=show?'':'none';g('empToggle').textContent=show?'Ocultar':'Mostrar';});
