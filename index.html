@@ -361,6 +361,7 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
   <div id="panel-inventario" hidden>
     <div class="row" id="ivNav" style="margin:0 0 12px 0;gap:6px">
       <button class="primary sm" data-iv="conteo">📦 Conteo por área</button>
+      <button class="ghost sm" data-iv="consolidado">📊 Consolidado</button>
       <button class="ghost sm" data-iv="juego">🧮 Juego de inventarios</button>
       <button class="ghost sm" data-iv="analisis">🔎 Comparar y trazar</button>
     </div>
@@ -407,6 +408,18 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
       <div class="totbar" id="anResumen" style="margin-top:10px"></div>
     </section>
 
+    <section class="card step" id="secConsolidado" hidden>
+      <div class="rev-head">
+        <div><h2>📊 Consolidado por producto</h2><p class="sub">El mismo producto sumado en todas las áreas. Así sabes cuánto tienes de verdad de cada cosa (ej. la sal que está en Cocina + Parrilla + Fritos + Almacén).</p></div>
+        <button class="ghost sm" id="btnExcelCons">⬇ Excel</button>
+      </div>
+      <div class="totbar" id="consResumen" style="margin:10px 0"></div>
+      <div class="row" style="margin:8px 0"><input id="buscarCons" placeholder="Buscar producto…" style="flex:1;min-width:140px"></div>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Producto</th><th>Unidad</th><th class="num">Cantidad total</th><th class="num">Costo</th><th class="num">Valor</th><th>Áreas (cantidad)</th></tr></thead>
+        <tbody id="consBody"><tr><td colspan="6"><div class="empty">Abre esta pestaña para calcular.</div></td></tr></tbody>
+      </table></div>
+    </section>
     <section class="card step" id="secJuego" hidden>
       <div class="rev-head">
         <div><h2>🧮 Juego de inventarios</h2><p class="sub">Inventario Inicial + Compras − Inventario Final = Consumo. Valorizado, con corte a fin de mes para los contadores. Guarda un corte cada mes en 📦 Conteo → 💾 Guardar corte.</p></div>
@@ -535,6 +548,7 @@ let PROVIDX=null;function provIdx(){ if(!PROVIDX){ PROVIDX={}; PROVM.forEach(p=>
 const byNorm=new Map(PRODS.map(p=>[norm(p.n),p]));
 function matchProd(txt){const t=norm(txt);if(!t)return null;if(byNorm.has(t))return byNorm.get(t);let best=null,bs=0;for(const p of PRODS){const pn=norm(p.n);let sc=0;if(pn.includes(t)||t.includes(pn))sc=Math.min(pn.length,t.length)/Math.max(pn.length,t.length);if(sc>bs){bs=sc;best=p;}}return bs>=0.55?best:null;}
 const fmtN=(v,d=0)=>(v==null||v===""||isNaN(v))?"":Number(v).toLocaleString("es-CO",{maximumFractionDigits:d});
+const fmtQ=v=>(v==null||v===""||isNaN(v))?"":Number(v).toLocaleString("es-CO",{maximumFractionDigits:3}); // cantidades con decimales
 function todayISO(){const d=new Date(Date.now()-5*3600*1000);return d.toISOString().slice(0,10);}
 function parseG(x){if(x==null)return null;let s=String(x).replace(/\./g,"").replace(/,/g,".").replace(/[^0-9.]/g,"");if(s==="")return null;const n=parseFloat(s);return isNaN(n)?null:Math.round(n);}
 function dmyToISO(s){if(!s)return todayISO();const m=String(s).match(/(\d{1,2})\s*[\/\-.]\s*(\d{1,2})(?:\s*[\/\-.]\s*(\d{2,4}))?/);if(!m)return todayISO();let[,d,mo,y]=m;y=y?(y.length===2?"20"+y:y):String(new Date().getFullYear());return `${y}-${mo.padStart(2,"0")}-${d.padStart(2,"0")}`;}
@@ -1323,8 +1337,47 @@ function setInvView(v){
   document.getElementById('secConteo').hidden=(v!=='conteo');
   document.getElementById('secAnalisis').hidden=(v!=='analisis');
   const sj=document.getElementById('secJuego'); if(sj)sj.hidden=(v!=='juego');
+  const sc=document.getElementById('secConsolidado'); if(sc)sc.hidden=(v!=='consolidado');
   if(v==='analisis') renderAnalisis();
   if(v==='juego') cargarJuego();
+  if(v==='consolidado') renderConsolidado();
+}
+function consolidado(){
+  const g={};
+  INV.forEach(it=>{ const k=norm(it.nombre); if(!k)return;
+    const o=g[k]||(g[k]={nombre:it.nombre,cant:0,costo:null,areas:{},unidades:new Set(),conCant:false});
+    const q=(it.cantidad!=null&&it.cantidad!==''&&!isNaN(it.cantidad))?Number(it.cantidad):null;
+    if(q!=null){ o.cant+=q; o.conCant=true; o.areas[it.area]=(o.areas[it.area]||0)+q; }
+    else if(!(it.area in o.areas)) o.areas[it.area]=0;
+    if(it.unidad)o.unidades.add((it.unidad||'').toUpperCase());
+    if(o.costo==null && it.costo!=null)o.costo=Number(it.costo);
+  });
+  return Object.values(g).sort((a,b)=>a.nombre.localeCompare(b.nombre));
+}
+function renderConsolidado(){
+  const body=document.getElementById('consBody'); if(!body)return;
+  const q=norm((document.getElementById('buscarCons')||{}).value||'');
+  let arr=consolidado(); if(q)arr=arr.filter(o=>norm(o.nombre).includes(q));
+  let gt=0;
+  body.innerHTML=arr.map(o=>{
+    const val=(o.conCant&&o.costo!=null)?Math.round(o.cant*o.costo):null; if(val)gt+=val;
+    const umMix=o.unidades.size>1;
+    const areasTxt=Object.entries(o.areas).sort((a,b)=>b[1]-a[1]).map(([a,qq])=>a+(qq?(' <b>'+fmtQ(qq)+'</b>'):'')).join(' · ');
+    return '<tr><td><b>'+escH(o.nombre)+'</b></td>'
+      +'<td>'+[...o.unidades].join('/')+(umMix?' <span style="color:#e23a2e" title="unidades distintas entre áreas">⚠</span>':'')+'</td>'
+      +'<td class="num"><b>'+(o.conCant?fmtQ(o.cant):'—')+'</b></td>'
+      +'<td class="num">'+(o.costo!=null?'$'+fmtN(o.costo):'—')+'</td>'
+      +'<td class="num">'+(val!=null?'$'+fmtN(val):'')+'</td>'
+      +'<td style="font-size:.78rem;color:var(--muted)">'+areasTxt+'</td></tr>';
+  }).join('')||'<tr><td colspan="6"><div class="empty">Sin productos.</div></td></tr>';
+  document.getElementById('consResumen').innerHTML='<b>'+arr.length+'</b> productos distintos · Total <b>$'+fmtN(gt)+'</b>';
+}
+function excelCons(){
+  if(typeof XLSX==='undefined'){ alert('El módulo de Excel aún está cargando, intenta de nuevo.'); return; }
+  const arr=consolidado(); const aoa=[['Producto','Unidad','Cantidad total','Costo','Valor','Áreas']];
+  arr.forEach(o=>{ const val=(o.conCant&&o.costo!=null)?Math.round(o.cant*o.costo):''; aoa.push([o.nombre,[...o.unidades].join('/'),o.conCant?o.cant:'',o.costo!=null?o.costo:'',val,Object.keys(o.areas).join(', ')]); });
+  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),'CONSOLIDADO');
+  XLSX.writeFile(wb,'Inventario_consolidado_'+todayISO()+'.xlsx');
 }
 function renderAreaTabs(){
   const c=document.getElementById('areaTabs'); c.innerHTML='';
@@ -1554,6 +1607,8 @@ function excelJuego(){
 (function(){const g=id=>document.getElementById(id);
   if(g('btnGuardarCorte'))g('btnGuardarCorte').addEventListener('click',guardarCorte);
   if(g('btnQR'))g('btnQR').addEventListener('click',abrirQRPlanillas);
+  if(g('buscarCons'))g('buscarCons').addEventListener('input',renderConsolidado);
+  if(g('btnExcelCons'))g('btnExcelCons').addEventListener('click',excelCons);
   if(g('jIni'))g('jIni').addEventListener('change',renderJuego);
   if(g('jFin'))g('jFin').addEventListener('change',renderJuego);
   if(g('btnRefJuego'))g('btnRefJuego').addEventListener('click',cargarJuego);
