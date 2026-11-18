@@ -790,7 +790,7 @@ function renderProdAvg(){
 // ===== Revisión receta <-> producción =====
 function pesoG(v){ if(v==null||v==='')return null; const n=Number(v); if(isNaN(n))return null; return n<100?n*1000:n; } // <100 se asume kg mal escalado a g
 // Tope de gramos CRUDOS por porción para proteínas porcionadas (clave = primera palabra del nombre)
-const GRAMAJE_CRUDO={"COSTILLA":500,"CHUNCHULLO":500};
+const GRAMAJE_CRUDO={"COSTILLA":500,"CHUNCHULLO":600};
 function gramajeObjetivo(nombre){ const w=norm(nombre).split(' ')[0]; return (w in GRAMAJE_CRUDO)?GRAMAJE_CRUDO[w]:null; }
 function renderRevisionProd(){
   const body=document.getElementById('revProdBody'); if(!body)return;
