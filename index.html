@@ -117,6 +117,8 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
 .chipF:hover{color:var(--brand)}.chipF.on:hover{color:#fff}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>@media print{ body>*:not(#qrModal){display:none!important;} #qrModal{position:static!important;background:#fff!important;padding:0!important;overflow:visible!important;} #qrModal #qrPrint,#qrModal #qrClose{display:none!important;} }</style>
 <style id="shellcss">
 .wrap{max-width:1180px;margin:0 auto;display:flex;gap:0;padding:0;min-height:100vh;align-items:stretch}
 .side{position:sticky;top:0;align-self:flex-start;height:100vh;width:244px;flex:none;display:flex;flex-direction:column;background:linear-gradient(180deg,var(--surface2),var(--surface));border-right:1px solid var(--line2);padding:16px 12px}
@@ -366,7 +368,7 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
     <section class="card step" id="secConteo">
       <div class="rev-head">
         <div><h2>Inventarios por área</h2><p class="sub">Cuenta por área y calcula el valor (cantidad × costo). Las recetas/salsas entran solas como ítems.</p></div>
-        <div class="row"><button class="primary sm" id="btnGuardarCorte">💾 Guardar corte</button><button class="ghost sm" id="btnExcelInv">⬇ Excel</button><button class="ghost sm" id="btnPrintInv">🖨 Imprimir área</button></div>
+        <div class="row"><button class="primary sm" id="btnGuardarCorte">💾 Guardar corte</button><button class="ghost sm" id="btnQR">🔳 QR planillas</button><button class="ghost sm" id="btnExcelInv">⬇ Excel</button><button class="ghost sm" id="btnPrintInv">🖨 Imprimir área</button></div>
       </div>
       <div class="row" id="areaTabs" style="margin:12px 0;gap:6px;flex-wrap:wrap"></div>
       <div class="row" style="margin-bottom:10px">
@@ -1551,6 +1553,7 @@ function excelJuego(){
 }
 (function(){const g=id=>document.getElementById(id);
   if(g('btnGuardarCorte'))g('btnGuardarCorte').addEventListener('click',guardarCorte);
+  if(g('btnQR'))g('btnQR').addEventListener('click',abrirQRPlanillas);
   if(g('jIni'))g('jIni').addEventListener('change',renderJuego);
   if(g('jFin'))g('jFin').addEventListener('change',renderJuego);
   if(g('btnRefJuego'))g('btnRefJuego').addEventListener('click',cargarJuego);
@@ -2043,8 +2046,73 @@ async function borrarUsuario(target){
   if(res.ok){ msg.textContent='✓ Borrado'; cargarListaUsuarios(); }
   else msg.textContent=res.error||'Error';
 }
+// ===== Modo conteo (se abre al escanear el QR de una planilla) =====
+async function conteoMode(areaRaw){
+  const area=AREAS.find(a=>norm(a)===norm(areaRaw))||(areaRaw||'').toUpperCase();
+  const esc=s=>(s||'').toString().replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  document.title='Conteo '+area+' · Alma Patio';
+  document.body.innerHTML='<div style="min-height:100vh;background:radial-gradient(circle at 50% 0%,#2a160b,#140c07 60%,#0d0906);color:#f3e9df;font-family:system-ui,Arial,sans-serif;padding:18px 16px 80px;max-width:640px;margin:0 auto">'
+    +'<div style="text-align:center;font-size:.78rem;letter-spacing:.08em;color:#d9a066">ALMA PATIO · EL PATIO VILLA DE LEYVA</div>'
+    +'<h1 style="text-align:center;margin:2px 0;font-size:1.5rem">Inventario</h1>'
+    +'<div style="text-align:center;font-size:1.25rem;font-weight:800;color:#e8853a;margin-bottom:14px">'+esc(area)+'</div>'
+    +'<label style="display:block;font-size:.85rem;margin-bottom:4px;color:#d9c7b8">Tu nombre</label>'
+    +'<input id="cqNom" placeholder="Quién cuenta" autocomplete="name" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1px solid #5a3a22;background:#1c120a;color:#f3e9df;font-size:1rem;margin-bottom:16px">'
+    +'<div id="cqItems"><div style="text-align:center;padding:30px;color:#b8988a">Cargando productos…</div></div>'
+    +'<button id="cqSave" style="position:fixed;left:16px;right:16px;bottom:14px;max-width:608px;margin:0 auto;display:block;padding:15px;border:none;border-radius:12px;background:linear-gradient(135deg,#e8853a,#c9541f);color:#fff;font-size:1.05rem;font-weight:800;box-shadow:0 6px 20px rgba(0,0,0,.45)">Guardar conteo</button>'
+    +'<div id="cqMsg" style="position:fixed;left:0;right:0;bottom:72px;text-align:center;font-weight:700"></div></div>';
+  let items=[];
+  try{ const r=await fetch(IREST+"?select=*&area=eq."+encodeURIComponent(area)+"&order=nombre.asc",{headers:HDRS}); items=r.ok?await r.json():[]; }catch(e){}
+  const box=document.getElementById('cqItems');
+  if(!items.length){ box.innerHTML='<div style="text-align:center;padding:30px;color:#e8a">No hay productos en '+esc(area)+'. Avisa a administración.</div>'; return; }
+  box.innerHTML=items.map(it=>'<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #3a2416">'
+    +'<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:.98rem">'+esc(it.nombre)+(it.tipo==='preparacion'?' <span style="font-size:.7rem;color:#d9a066">receta</span>':'')+'</div></div>'
+    +'<input type="number" step="any" inputmode="decimal" data-id="'+it.id+'" value="'+(it.cantidad!=null?it.cantidad:'')+'" style="width:92px;padding:11px 8px;text-align:right;border-radius:9px;border:1px solid #5a3a22;background:#1c120a;color:#f3e9df;font-size:1.05rem">'
+    +'<span style="font-size:.8rem;color:#8a7a5a;min-width:30px">'+esc(it.unidad||'')+'</span></div>').join('');
+  document.getElementById('cqSave').addEventListener('click',async()=>{
+    const nom=document.getElementById('cqNom').value.trim(); const msg=document.getElementById('cqMsg');
+    if(!nom){ msg.style.color='#ff9d8a'; msg.textContent='Escribe tu nombre primero'; document.getElementById('cqNom').focus(); window.scrollTo(0,0); return; }
+    const btn=document.getElementById('cqSave'); btn.disabled=true; btn.textContent='Guardando…';
+    const hoy=todayISO(); let okc=0,err=0;
+    for(const inp of [...document.querySelectorAll('#cqItems input[data-id]')]){
+      const v=inp.value;
+      try{ const r=await fetch(IREST+"?id=eq."+inp.dataset.id,{method:"PATCH",headers:Object.assign({},HDRS,{"Prefer":"return=minimal"}),
+        body:JSON.stringify({cantidad:(v===''||v==null?null:Number(v)),fecha_conteo:hoy,responsable:nom})}); r.ok?okc++:err++; }catch(e){ err++; }
+    }
+    document.body.innerHTML='<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 20%,#1a3a1a,#0d1f0d 60%,#081008);color:#dff0df;font-family:system-ui,Arial;padding:24px;text-align:center">'
+      +'<div><div style="font-size:3rem">✓</div><h1 style="margin:8px 0">Conteo guardado</h1>'
+      +'<p style="font-size:1.1rem">'+esc(area)+' · '+okc+' productos</p>'
+      +'<p style="color:#9bc99b">Contado por <b>'+esc(nom)+'</b> · '+hoy+'</p>'
+      +(err?'<p style="color:#ff9d8a">'+err+' no se guardaron, revisa el internet y vuelve a intentar</p>':'')
+      +'<p style="margin-top:20px;font-size:.85rem;color:#8aa88a">Ya puedes cerrar esta página.</p></div></div>';
+  });
+}
+// ===== Generador de QR por planilla (admin) =====
+function abrirQRPlanillas(){
+  if(typeof QRCode==='undefined'){ alert('El generador de QR aún está cargando, intenta de nuevo en unos segundos.'); return; }
+  let modal=document.getElementById('qrModal');
+  if(!modal){ modal=document.createElement('div'); modal.id='qrModal'; document.body.appendChild(modal); }
+  modal.style.cssText='position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.8);overflow:auto;padding:20px';
+  const base=location.origin+location.pathname;
+  modal.innerHTML='<div id="qrSheet" style="max-width:920px;margin:0 auto;background:#fff;color:#111;border-radius:14px;padding:22px">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><h2 style="margin:0;color:#111">🔳 QR por planilla</h2><div><button class="ghost sm" id="qrPrint">🖨 Imprimir</button> <button class="ghost sm" id="qrClose">✕</button></div></div>'
+    +'<p style="color:#555;margin:4px 0 0">Imprime y pega el QR de cada área en su estación. El equipo lo escanea, pone su nombre y llena solo las cantidades, en la unidad correcta.</p>'
+    +'<div id="qrGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:16px;margin-top:16px"></div></div>';
+  document.getElementById('qrClose').onclick=()=>modal.remove();
+  document.getElementById('qrPrint').onclick=()=>window.print();
+  const grid=document.getElementById('qrGrid');
+  AREAS.forEach(a=>{
+    const card=document.createElement('div'); card.style.cssText='border:1px solid #ddd;border-radius:10px;padding:14px;text-align:center;break-inside:avoid';
+    const t=document.createElement('div'); t.style.cssText='font-weight:800;margin-bottom:10px;font-size:1rem;color:#111'; t.textContent=a;
+    const q=document.createElement('div'); q.style.cssText='display:flex;justify-content:center';
+    const h=document.createElement('div'); h.style.cssText='margin-top:8px;font-size:.72rem;color:#888'; h.textContent='Escanear para contar';
+    card.appendChild(t); card.appendChild(q); card.appendChild(h); grid.appendChild(card);
+    try{ new QRCode(q,{text:base+'?conteo='+encodeURIComponent(a),width:160,height:160,correctLevel:QRCode.CorrectLevel.M}); }catch(e){ q.textContent='(QR no disponible)'; }
+  });
+}
 (function boot(){
   const g=id=>document.getElementById(id);
+  const cparam=new URLSearchParams(location.search).get('conteo');
+  if(cparam){ conteoMode(cparam); return; }
   g('btnLogin').addEventListener('click',hacerLogin);
   g('loginUser').addEventListener('keydown',e=>{if(e.key==='Enter')g('loginPin').focus();});
   g('loginPin').addEventListener('keydown',e=>{if(e.key==='Enter')hacerLogin();});
