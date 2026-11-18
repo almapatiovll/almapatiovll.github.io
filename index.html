@@ -639,11 +639,11 @@ const CAP_MULTI={
   'GUA-01':{ base:'Peso papa criolla alistada (g)', salidas:[
     {code:'GUA-11', nombre:'PAPA CHURRASCO', g:140, k:'q_GUA-11', label:'N° papa churrasco (140 g)'},
     {code:'GUA-13', nombre:'PAPA DE CHUNCHULLO', g:180, k:'q_GUA-13', label:'N° papa chunchullo (180 g)'},
-    {code:'GUA-02', nombre:'PAPA ROTA', g:140, k:'q_GUA-02', label:'N° papa rota (140 g)'},
-    {code:'GUA-12', nombre:'PAPA PARA PURE', g:500, k:'q_GUA-12', label:'N° papa para puré (500 g)'}]}
+    {code:'GUA-02', nombre:'PAPA ROTA', g:140, k:'q_GUA-02', label:'N° papa rota (140 g)'}]}
 };
 // papas de porción fija (una sola salida, gramaje fijo)
 const GRAMFIJO={'PRO-EX1':150,'COR-07':160,'COR-08':200,'COR-09':140};
+const BASELABEL={'GUA-12':'Peso papa pastusa (g)'}; // etiqueta del insumo crudo para ítems porcionados puntuales
 function captura(code){
   if(CAP_MULTI[code]) return 'multi';
   if(GRAMFIJO[code]) return 'porcionfija';
@@ -671,7 +671,7 @@ function fieldsHTML(row){
     const g=GRAMFIJO[row.code];
     h+=fld('N° porciones ('+g+' g c/u)','porciones',row.porciones); shown.add('porciones');
   } else {
-    h+=fld('Peso inicial (g)','pesoI',row.pesoI)+fld('Porciones','porciones',row.porciones)+fld('Peso final (g)','pesoF',row.pesoF);
+    h+=fld(BASELABEL[row.code]||'Peso inicial (g)','pesoI',row.pesoI)+fld('Porciones','porciones',row.porciones)+fld('Peso final (g)','pesoF',row.pesoF);
     shown.add('pesoI'); shown.add('porciones'); shown.add('pesoF');
   }
   h+=`<label class="field">Responsable<input data-k="responsable" value="${row.responsable}"></label>`;
