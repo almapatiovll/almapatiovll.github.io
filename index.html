@@ -311,10 +311,10 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
 
   <!-- REVISIÓN RECETA ↔ PRODUCCIÓN -->
   <section class="card" style="border-top:4px solid var(--blue,#3b82f6)">
-    <div class="rev-head"><div><h2>🔬 Revisión receta ↔ producción</h2><p class="sub">Cada cosa que se produce, cruzada con su receta: rinde real vs teórico, costo por porción y qué falta para que el costeo salga exacto. Lo ideal: toda producción ligada a una receta.</p></div><button class="ghost sm" id="btnRefRevProd">↻</button></div>
+    <div class="rev-head"><div><h2>🔬 Revisión de producción</h2><p class="sub">Compara cada producción con su propio histórico. Si el rinde, el gramaje o lo que salió por tanda se mantiene parecido, está bien. Si se sale del margen (±15%) o pasa un tope, avisa "¿qué pasó?". No pone candados — aprende de lo que ustedes producen.</p></div><button class="ghost sm" id="btnRefRevProd">↻</button></div>
     <div class="totbar" id="revProdResumen" style="margin:10px 0"></div>
     <div class="tablewrap"><table>
-      <thead><tr><th>Preparación</th><th class="num">Prod.</th><th class="num">Real</th><th class="num">Objetivo</th><th>Estado</th></tr></thead>
+      <thead><tr><th>Preparación <span class="muted" style="font-weight:400;font-size:.72rem">(histórico)</span></th><th class="num">Última</th><th class="num">Normal</th><th class="num">Desv.</th><th>Estado</th></tr></thead>
       <tbody id="revProdBody"><tr><td colspan="5"><div class="empty">Abre esta pestaña para calcular.</div></td></tr></tbody>
     </table></div>
   </section>
@@ -817,51 +817,46 @@ function pesoG(v){ if(v==null||v==='')return null; const n=Number(v); if(isNaN(n
 // Tope de gramos CRUDOS por porción para proteínas porcionadas (clave = primera palabra del nombre)
 const GRAMAJE_CRUDO={"COSTILLA":500,"CHUNCHULLO":600};
 function gramajeObjetivo(nombre){ const w=norm(nombre).split(' ')[0]; return (w in GRAMAJE_CRUDO)?GRAMAJE_CRUDO[w]:null; }
+const TOL_PROD=0.15; // margen de tolerancia por defecto (±15%) — si se sale de ahí, avisa "¿qué pasó?"
+function metricaProd(rows){
+  const hasPiPf=rows.some(r=>r.pi&&r.pf), hasPfPorc=rows.some(r=>r.pf&&r.porc), hasPfRec=rows.some(r=>r.pf&&r.rec);
+  let tipo,serie;
+  if(hasPiPf){ tipo='rinde'; serie=rows.filter(r=>r.pi&&r.pf).map(r=>({fecha:r.fecha,val:r.pf/r.pi})); }
+  else if(hasPfPorc){ tipo='gporc'; serie=rows.filter(r=>r.pf&&r.porc).map(r=>({fecha:r.fecha,val:r.pf/r.porc})); }
+  else if(hasPfRec){ tipo='tanda'; serie=rows.filter(r=>r.pf&&r.rec).map(r=>({fecha:r.fecha,val:r.pf/r.rec})); }
+  else return null;
+  serie.sort((a,b)=>(a.fecha<b.fecha?-1:a.fecha>b.fecha?1:0));
+  return {tipo,serie};
+}
+function fmtMetric(v,tipo){ if(tipo==='rinde')return (v*100).toFixed(0)+'%'; if(tipo==='tanda')return (v>=1000?(v/1000).toLocaleString('es-CO',{maximumFractionDigits:2})+' kg':Math.round(v)+' g'); return Math.round(v)+' g/porc'; }
 function renderRevisionProd(){
   const body=document.getElementById('revProdBody'); if(!body)return;
-  const recs=recetasAll(); const byCode={},byName={};
-  recs.forEach(r=>{ if(r.c)byCode[r.c]=r; byName[norm(r.n)]=r; });
   const g={};
   (saved||[]).forEach(r=>{ const nm=(r.preparacion||'').trim(); if(!nm)return; const k=norm(nm);
-    const o=g[k]||(g[k]={nombre:nm,codigo:r.codigo||'',n:0,mPi:0,mPf:0,mW:0,gPi:0,gPorc:0,ult:''});
-    o.n++;
-    const gi=pesoG(r.peso_inicial), gf=pesoG(r.peso_final);
-    const porc=(r.porciones!=null&&r.porciones!=='')?Number(r.porciones):null;
-    if(gi!=null&&gf!=null){ o.mPi+=gi; o.mPf+=gf; o.mW++; }       // para merma: tandas con inicial Y final
-    if(gi!=null&&porc!=null&&porc>0){ o.gPi+=gi; o.gPorc+=porc; } // para gramaje: tandas con inicial Y porciones
-    if((r.fecha||'')>=o.ult){ o.ult=r.fecha||''; if(r.codigo)o.codigo=r.codigo; }
+    (g[k]=g[k]||{nombre:nm,rows:[]}).rows.push({fecha:r.fecha||'',pi:pesoG(r.peso_inicial),pf:pesoG(r.peso_final),
+      porc:(r.porciones!=null&&r.porciones!=='')?Number(r.porciones):null,rec:(r.recetas!=null&&r.recetas!=='')?Number(r.recetas):null});
   });
-  const arr=Object.values(g).sort((a,b)=>b.n-a.n);
+  const arr=Object.values(g).sort((a,b)=>b.rows.length-a.rows.length);
   let alertas=0;
   body.innerHTML=arr.map(o=>{
-    const rec=(o.codigo&&byCode[o.codigo])||byName[norm(o.nombre)];
-    const tope=gramajeObjetivo(o.nombre);
-    let metrica='<span class="muted">—</span>', objetivo='<span class="muted">—</span>', estado='';
-    if(tope!=null){
-      objetivo='≤ '+tope+' g/porc';
-      if(o.gPi>0 && o.gPorc>0){ const cpp=o.gPi/o.gPorc; metrica='<b>'+Math.round(cpp)+'</b> g/porc';
-        if(cpp>tope+1){ const minPorc=Math.floor(o.gPi/tope); alertas++;
-          estado='<span style="color:#e23a2e;font-weight:700">⚠ +'+Math.round(cpp-tope)+' g · faltaron '+(minPorc-o.gPorc)+' porc</span>'; }
-        else estado='<span style="color:#4ca635">✓ dentro del tope</span>';
-      } else estado='<span style="color:#f59e0b">falta registrar peso crudo + porciones</span>';
-    } else if(rec && Number(rec.rend)>0){
-      const cc=costoReceta(rec.items||[]); const cPorc=Math.round(cc.tot/Number(rec.rend));
-      objetivo='rinde '+fmtN(rec.rend); metrica='<span class="muted">receta ok</span>';
-      estado='<span class="muted">$'+fmtN(cPorc)+'/porción</span>';
-    } else if(rec){
-      estado='<span style="color:#f59e0b">receta sin rinde — falta cargar</span>';
-    } else {
-      if(o.mW && o.mPi>0){ const rinde=o.mPf/o.mPi; metrica='<b>'+(rinde*100).toFixed(0)+'%</b> rinde'; estado='<span class="muted">merma '+((1-rinde)*100).toFixed(0)+'%</span>'; }
-      else estado='<span style="color:#f59e0b">sin receta ni control</span>';
-    }
-    return '<tr><td><b>'+escH(o.nombre)+'</b>'+(o.codigo?' <span class="muted" style="font-size:.7rem">'+escH(o.codigo)+'</span>':'')+'</td>'
-      +'<td class="num">'+o.n+'</td>'
-      +'<td class="num">'+metrica+'</td>'
-      +'<td class="num">'+objetivo+'</td>'
+    const m=metricaProd(o.rows), tope=gramajeObjetivo(o.nombre);
+    if(!m||!m.serie.length) return '<tr><td><b>'+escH(o.nombre)+'</b></td><td class="num">—</td><td class="num">—</td><td class="num"></td><td><span style="color:#8a7a5a">sin datos para medir</span></td></tr>';
+    const vals=m.serie.map(s=>s.val), last=vals[vals.length-1], prev=vals.slice(0,-1);
+    const normal=prev.length?prev.reduce((a,b)=>a+b,0)/prev.length:last;
+    const dev=prev.length?(last-normal)/normal:0;
+    const hist=m.serie.map(s=>fmtMetric(s.val,m.tipo)).join(' → ');
+    let estado, devTxt='', devCol='#4ca635';
+    if(tope!=null && m.tipo==='gporc' && last>tope+1){ alertas++; estado='<span style="color:#e23a2e;font-weight:700">⚠ sobre tope ('+Math.round(last)+' > '+tope+' g)</span>'; devCol='#e23a2e'; devTxt=prev.length?((dev>0?'+':'')+(dev*100).toFixed(0)+'%'):''; }
+    else if(prev.length>=1 && Math.abs(dev)>TOL_PROD){ alertas++; devCol='#e23a2e'; devTxt=(dev>0?'+':'')+(dev*100).toFixed(0)+'%'; estado='<span style="color:#e23a2e;font-weight:700">⚠ salió distinto — ¿qué pasó?</span>'; }
+    else if(prev.length>=1){ devTxt=(dev>0?'+':'')+(dev*100).toFixed(0)+'%'; estado='<span style="color:#4ca635">✓ dentro de lo normal</span>'; }
+    else estado='<span class="muted">primer registro — sin histórico aún</span>';
+    return '<tr><td><b>'+escH(o.nombre)+'</b><div class="muted" style="font-size:.72rem">'+escH(hist)+'</div></td>'
+      +'<td class="num"><b>'+fmtMetric(last,m.tipo)+'</b></td>'
+      +'<td class="num">'+(prev.length?fmtMetric(normal,m.tipo):'<span class="muted">—</span>')+(tope!=null&&m.tipo==='gporc'?'<div class="muted" style="font-size:.7rem">tope '+tope+' g</div>':'')+'</td>'
+      +'<td class="num">'+(devTxt?'<span style="color:'+devCol+';font-weight:700">'+devTxt+'</span>':'')+'</td>'
       +'<td>'+estado+'</td></tr>';
   }).join('')||'<tr><td colspan="5"><div class="empty">Sin producciones cargadas.</div></td></tr>';
-  const conGram=arr.filter(o=>gramajeObjetivo(o.nombre)!=null).length;
-  document.getElementById('revProdResumen').innerHTML='<b>'+arr.length+'</b> ítems producidos · <b>'+conGram+'</b> con control de gramaje · <b style="color:#e23a2e">'+alertas+'</b> sobre-porcionados (se pasan del tope)';
+  document.getElementById('revProdResumen').innerHTML='<b>'+arr.length+'</b> preparaciones · <b style="color:#e23a2e">'+alertas+'</b> con desviación (fuera de ±'+Math.round(TOL_PROD*100)+'% o sobre tope) · <span class="muted">compara cada producción con su histórico</span>';
 }
 (function(){ const b=document.getElementById('btnRefRevProd'); if(b)b.addEventListener('click',async()=>{ b.textContent='…'; try{ await cargarRecetas(); saved=await listProd(); }catch(e){} renderRevisionProd(); b.textContent='↻'; }); })();
 function toToteatCSV(){
