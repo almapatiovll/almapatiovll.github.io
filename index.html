@@ -319,6 +319,16 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
     </table></div>
   </section>
 
+  <!-- PATACÓN: RINDE Y COSTO REAL -->
+  <section class="card" style="border-top:4px solid #e9a23b">
+    <div class="rev-head"><div><h2>🍌 Patacón — rinde y costo real</h2><p class="sub">Cruza cada producción de patacón con la factura de plátano del día. Saca el rinde (patacón que sale ÷ plátano crudo) y el costo real por porción, con el aceite incluido (30 L por cada 800 kg). Si un día rinde por debajo del promedio, avisa: ese lote salió más caro.</p></div><button class="ghost sm" id="btnRefPatacon">↻</button></div>
+    <div id="patResumen" style="margin:10px 0"></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Fecha</th><th class="num">Plátano crudo</th><th class="num">Patacón</th><th class="num">Rinde</th><th class="num">$/porción</th><th>Estado</th></tr></thead>
+      <tbody id="patBody"><tr><td colspan="6"><div class="empty">Abre esta pestaña para calcular.</div></td></tr></tbody>
+    </table></div>
+  </section>
+
   </div><!-- /panel-prod -->
 
   <div id="panel-recetas" hidden>
@@ -562,7 +572,7 @@ async function insertProd(rows){const r=await fetch(REST,{method:"POST",headers:
 async function delProd(id){const r=await fetch(REST+"?id=eq."+encodeURIComponent(id),{method:"DELETE",headers:HDRS});if(!r.ok)throw new Error("del "+r.status);}
 
 async function refresh(){
-  try{ saved=await listProd(); setConn(true); renderTable(); renderProdAvg(); try{renderRevisionProd();}catch(e){} }
+  try{ saved=await listProd(); setConn(true); renderTable(); renderProdAvg(); try{renderRevisionProd();}catch(e){} try{ await cargarFactSiVacio(); renderPatacon(); }catch(e){} }
   catch(e){ setConn(false); $("emptyRow").textContent="No se pudo conectar a los datos."; }
 }
 function setConn(ok){const c=$("conn");c.innerHTML=`<span class="dot ${ok?'ok':'bad'}"></span>${ok?'conectado':'sin conexión'}`;}
@@ -863,6 +873,59 @@ function renderRevisionProd(){
   document.getElementById('revProdResumen').innerHTML='<b>'+arr.length+'</b> preparaciones · <b style="color:#e23a2e">'+alertas+'</b> salieron fuera de su rango normal · <span class="muted">la app aprende sola el margen de cada una según cómo varía</span>';
 }
 (function(){ const b=document.getElementById('btnRefRevProd'); if(b)b.addEventListener('click',async()=>{ b.textContent='…'; try{ await cargarRecetas(); saved=await listProd(); }catch(e){} renderRevisionProd(); b.textContent='↻'; }); })();
+
+// ===== PATACÓN: rinde y costo real (cruce factura de plátano ↔ producción) =====
+const ACEITE_L_POR_KG_PLAT=30/800; // 30 L de aceite de freír por cada 800 kg de plátano
+function precioPlatanoKg(){ let best=null; (FACT||[]).forEach(f=>{ (f.items||[]).forEach(it=>{ if(it.precioUnit!=null && /PLATANO VERDE/.test(norm(it.producto))){ const d=f.fecha||''; if(!best||d>best.fecha)best={fecha:d,p:Number(it.precioUnit)}; } }); }); if(best)return best.p; const c=priceOf(norm('PLATANO VERDE')); return c?c.c:5657; }
+function precioAceiteL(){ const c=priceOf(norm('ACEITE FREIR')); return c?c.c:11440; }
+function platanoDeFacturaDia(fecha){ let best=null; (FACT||[]).forEach(f=>{ const d=f.fecha||''; if(!d||d>fecha)return; (f.items||[]).forEach(it=>{ if(it.cantidad!=null && /PLATANO VERDE/.test(norm(it.producto))){ if(!best||d>best.fecha)best={fecha:d,kg:Number(it.cantidad)}; } }); }); return best; }
+function patataconDatos(){
+  const platKg=precioPlatanoKg(), aceiteL=precioAceiteL();
+  const costoKgCrudo=platKg+ACEITE_L_POR_KG_PLAT*aceiteL; // $/kg de plátano crudo, con aceite
+  const byF={};
+  (saved||[]).forEach(r=>{ if(r.codigo!=='GUA-03'&&r.codigo!=='GUA-10')return; const f=r.fecha||''; if(!f)return;
+    const o=byF[f]=byF[f]||{fecha:f,crudoProd:0,salida:0,porc:0,combo:0,fuerte:0};
+    o.salida+=pesoG(r.peso_final)||0; o.porc+=Number(r.porciones)||0; o.crudoProd+=pesoG(r.peso_inicial)||0;
+    if(r.codigo==='GUA-03')o.combo+=Number(r.porciones)||0; else o.fuerte+=Number(r.porciones)||0;
+  });
+  const arr=Object.values(byF).map(o=>{ let crudoG=o.crudoProd, fuente='producción', rinde=null;
+    if(crudoG){ rinde=o.salida/crudoG; }
+    else { const fac=platanoDeFacturaDia(o.fecha); if(fac){ const cg=fac.kg*1000, rr=cg?o.salida/cg:0; if(rr>=0.25&&rr<=0.95){ crudoG=cg; rinde=rr; fuente='factura '+fac.fecha; } } }
+    const plausible = rinde!=null && rinde>=0.25 && rinde<=0.95;
+    const costoPorc=(plausible&&o.porc)?Math.round((crudoG/1000*costoKgCrudo)/o.porc):null;
+    return Object.assign(o,{crudoG:crudoG||0,fuente,rinde,plausible,costoPorc});
+  }).sort((a,b)=>a.fecha<b.fecha?1:-1);
+  return {arr,costoKgCrudo};
+}
+function renderPatacon(){
+  const body=document.getElementById('patBody'); if(!body)return;
+  const {arr,costoKgCrudo}=patataconDatos();
+  const res=document.getElementById('patResumen');
+  if(!arr.length){ body.innerHTML='<tr><td colspan="6"><div class="empty">Sin producciones de patacón cargadas.</div></td></tr>'; if(res)res.innerHTML=''; return; }
+  const rindes=arr.filter(o=>o.plausible).map(o=>o.rinde);
+  const avg=rindes.length?rindes.reduce((a,b)=>a+b,0)/rindes.length:null;
+  let bajos=0;
+  body.innerHTML=arr.map(o=>{
+    if(!o.plausible){ const msg=o.rinde!=null?'rinde no cuadra ('+(o.rinde*100).toFixed(0)+'%) — revisar peso crudo':'falta plátano crudo y no hay factura';
+      return '<tr><td><b>'+o.fecha+'</b></td><td class="num">'+(o.crudoG?(o.crudoG/1000).toFixed(1)+' kg':'—')+'</td><td class="num">'+(o.salida/1000).toFixed(1)+' kg</td><td class="num">—</td><td class="num">—</td><td><span class="muted">'+msg+'</span></td></tr>'; }
+    const bajo=avg&&o.rinde<avg*0.95; if(bajo)bajos++;
+    const estado=bajo?'<span style="color:#e23a2e;font-weight:700">⚠ rindió bajo — salió caro</span>':'<span style="color:#4ca635">✓ normal</span>';
+    return '<tr'+(bajo?' style="background:rgba(226,58,46,.07)"':'')+'><td><b>'+o.fecha+'</b><div class="muted" style="font-size:.7rem">'+o.fuente+(o.combo?' · '+o.combo+' combo':'')+(o.fuerte?' · '+o.fuerte+' fuerte':'')+'</div></td>'
+      +'<td class="num">'+(o.crudoG/1000).toFixed(1)+' kg</td>'
+      +'<td class="num">'+(o.salida/1000).toFixed(1)+' kg</td>'
+      +'<td class="num"><b>'+(o.rinde*100).toFixed(0)+'%</b>'+(avg?'<div class="muted" style="font-size:.7rem">prom '+(avg*100).toFixed(0)+'%</div>':'')+'</td>'
+      +'<td class="num">$'+fmtN(o.costoPorc)+'</td>'
+      +'<td>'+estado+'</td></tr>';
+  }).join('');
+  if(res){ const ult=arr.find(o=>o.plausible);
+    let h='<b>Plátano con aceite: $'+fmtN(Math.round(costoKgCrudo))+'/kg crudo</b>';
+    if(ult){ const ckt=costoKgCrudo/ult.rinde; h+=' · Último rinde '+(ult.rinde*100).toFixed(0)+'% → <b>fuerte 50g $'+fmtN(Math.round(ckt*0.05))+'</b> · <b>combo x6 363g $'+fmtN(Math.round(ckt*0.363))+'</b>'; }
+    if(bajos)h+=' · <b style="color:#e23a2e">'+bajos+' día(s) rindieron bajo</b>';
+    res.innerHTML='<div class="totbar" style="background:rgba(233,162,59,.08);border-color:rgba(233,162,59,.3)">'+h+'</div>';
+  }
+}
+async function cargarFactSiVacio(){ if(!FACT.length){ try{ const r=await fetch(FREST+"?select=*&order=fecha.desc,creado_en.desc&limit=500",{headers:HDRS}); FACT=r.ok?await r.json():[]; }catch(e){} } }
+(function(){ const b=document.getElementById('btnRefPatacon'); if(b)b.addEventListener('click',async()=>{ b.textContent='…'; try{ saved=await listProd(); await cargarFactSiVacio(); }catch(e){} renderPatacon(); b.textContent='↻'; }); })();
 function toToteatCSV(){
   const rows=filtered();const pmap={};for(const p of PRODS)pmap[p.c]=p;
   const head=["Fecha","Id Producto","Nombre Producto","Cantidad","Unidad","Porciones","Peso final (kg)","Responsable"];
