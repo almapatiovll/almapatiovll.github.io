@@ -1023,13 +1023,32 @@ async function tbGuardar(id,campo,valor){
 /* ===== Recetas y costos ===== */
 const uDiv=u=>{u=(u||'').toLowerCase();return (u==='g'||u==='gr'||u==='grs'||u==='ml')?1000:1;};
 let ALIAS={};
+let FACTPX={}; // precios reales de factura: norm(insumo resuelto) -> {c,b,fecha}
 let COSTIDX=null;
 function costIdx(){ if(COSTIDX)return COSTIDX; COSTIDX={}; try{
   Object.values(TOTEAT).forEach(v=>{ const k=norm(v.n); if(k&&!(k in COSTIDX))COSTIDX[k]=v; });
   Object.values(COSTMAP).forEach(v=>{ const k=norm(v.n); if(k)COSTIDX[k]=v; }); // COSTMAP manda
 }catch(e){} return COSTIDX; }
+function uBaseNorm(u){ u=norm(u); if(/^(KG|KILO)/.test(u))return 'kg'; if(/^(LT|L|LITRO)/.test(u))return 'l'; if(/^(UN|UND|UNID|BOT)/.test(u))return 'un'; if(/^GR?/.test(u))return 'g'; if(/^ML/.test(u))return 'ml'; return u.toLowerCase(); }
+async function buildFactPx(){
+  FACTPX={}; let rows=[];
+  try{ const r=await fetch(PREST+"?select=insumo,precio,unidad,precio_uso,unidad_uso,fecha&order=fecha.desc.nullslast",{headers:HDRS}); rows=r.ok?await r.json():[]; }catch(e){ return; }
+  rows.forEach(row=>{ const k0=norm(row.insumo); const al=ALIAS[k0]; const key=(al&&al.conf&&al.dest)?al.dest:k0;
+    if(FACTPX[key]) return; // el primero es el más reciente (order desc)
+    let c=null,b=null;
+    if(row.precio_uso!=null && row.unidad_uso){ c=Number(row.precio_uso); b=uBaseNorm(row.unidad_uso); }
+    else if(row.precio!=null){ c=Number(row.precio); b=uBaseNorm(row.unidad); }
+    if(!(c>0 && isFinite(c))) return;
+    // candado: si el insumo ya está en el catálogo con otra unidad base, NO lo pisamos (evita romper el costeo)
+    const cat=COSTMAP[key]||TOTEAT[key]||costIdx()[key];
+    if(cat && cat.b && uBaseNorm(cat.b)!==b) return;
+    FACTPX[key]={c,b,n:row.insumo,fecha:row.fecha,fx:true};
+  });
+}
 function priceOf(key){
+  if(FACTPX[key]) return FACTPX[key]; // precio real de factura manda sobre el maestro
   const a=ALIAS[key];
+  if(a && a.conf && a.dest && FACTPX[a.dest]) return FACTPX[a.dest]; // factura del insumo emparejado
   if(a && a.conf && a.dest && TOTEAT[a.dest]) return TOTEAT[a.dest]; // emparejamiento confirmado manda
   if(COSTMAP[key]) return COSTMAP[key];
   if(a && a.dest && TOTEAT[a.dest]) return TOTEAT[a.dest];
@@ -1104,6 +1123,7 @@ function toteatNames(){ if(!TOTEAT_NAMES){ TOTEAT_NAMES=Object.values(TOTEAT).ma
 async function cargarAlias(){
   try{ const r=await fetch(AREST+"?select=*&order=origen.asc",{headers:HDRS}); ALIAS_ROWS=r.ok?await r.json():[]; }catch(e){ ALIAS_ROWS=[]; }
   ALIAS={}; ALIAS_ROWS.forEach(a=>{ ALIAS[norm(a.origen)]={dest:a.destino?norm(a.destino):null,destName:a.destino||'',conf:!!a.confirmado}; });
+  try{ await buildFactPx(); }catch(e){} // precios de factura al costeo
 }
 function escH(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');}
 function prepNames(){ return recetasAll().filter(r=>(r.tipo||'preparacion')==='preparacion').map(r=>r.n).sort((a,b)=>a.localeCompare(b)); }
