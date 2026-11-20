@@ -480,9 +480,9 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
         <thead><tr><th>Producto</th><th class="num">Cant.</th><th>Unidad</th><th class="num">Precio unit.</th><th class="num">Cant. que llegó (uso)</th><th class="num">$ / unidad uso</th><th class="num">Total</th><th></th></tr></thead>
         <tbody id="factItems"></tbody>
         <tfoot>
-          <tr><th colspan="6" style="text-align:right">Subtotal (base)</th><th class="num" id="fSubtotal">$0</th><th></th></tr>
-          <tr><th colspan="6" style="text-align:right">IVA + impuestos (impoconsumo)</th><th class="num"><input type="number" step="any" id="fImpuestos" placeholder="0" style="width:90px;text-align:right"></th><th></th></tr>
-          <tr><th colspan="6" style="text-align:right">Total con impuestos</th><th class="num" id="fTotal">$0</th><th></th></tr>
+          <tr><th colspan="6" style="text-align:right">Subtotal (suma de líneas)</th><th class="num" id="fSubtotal">$0</th><th></th></tr>
+          <tr><th colspan="6" style="text-align:right" title="IVA + impoconsumo que NO está incluido en los precios de las líneas. En facturas DIAN va aquí; en tirillas Makro el precio ya trae IVA, así que aquí va 0.">Impuestos a repartir <span class="sub" style="font-weight:400">(los que no vienen ya en el precio)</span></th><th class="num"><input type="number" step="any" id="fImpuestos" placeholder="0" style="width:90px;text-align:right"></th><th></th></tr>
+          <tr><th colspan="6" style="text-align:right">Total factura (lo que pagaste)</th><th class="num" id="fTotal">$0</th><th></th></tr>
         </tfoot>
       </table></div>
       <div class="row" style="margin-top:12px">
@@ -1885,13 +1885,21 @@ function llenarRevFactura(obj){
   try{autoNitDesdeProv();}catch(e){}
   factRev=(obj.items||[]).map(it=>({producto:it.producto||'',cantidad:it.cantidad,unidad:it.unidad||'',precio:it.precioUnit,total:it.total}));
   if(!factRev.length) factRev=[{producto:'',cantidad:'',unidad:'',precio:'',total:''}];
-  // IVA + impuesto al consumo: lo que lea la IA, o la diferencia entre el total y el subtotal base
+  // Impuestos A REPARTIR sobre las líneas. Autoridad = el TOTAL declarado (el número grande del pie).
+  //  - Factura DIAN: las líneas son base (sin IVA) -> repartir = total - suma de líneas.
+  //  - Tirilla POS (Makro): las líneas YA traen IVA (suman el total) -> repartir = 0 (no duplicar).
   factImp=0;
   try{
     const base=factRev.reduce((s,it)=>{ const v=(it.total!=null&&it.total!=='')?Number(it.total):((Number(it.cantidad)||0)*(Number(it.precio)||0)); return s+(isNaN(v)?0:v); },0);
-    let imp=num(obj.impuestos);
-    if(imp==null && num(obj.total)!=null && base>0 && Number(obj.total)>base) imp=Number(obj.total)-base;
-    factImp=(imp!=null&&imp>0)?Math.round(imp):0;
+    const tot=num(obj.total);
+    if(tot!=null && base>0 && tot>base*1.02){
+      factImp=Math.round(tot-base);               // líneas base: repartir la diferencia
+    } else if(tot!=null && base>0){
+      factImp=0;                                   // líneas ya con impuesto, o sin impuestos
+    } else {
+      const imp=num(obj.impuestos);                // sin total legible: usar impuestos leídos
+      factImp=(imp!=null&&imp>0)?Math.round(imp):0;
+    }
   }catch(e){ factImp=0; }
   const fi=document.getElementById('fImpuestos'); if(fi)fi.value=factImp||'';
   renderFactItems();
