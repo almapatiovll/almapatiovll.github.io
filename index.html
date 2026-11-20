@@ -479,7 +479,11 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
       <div class="tablewrap" style="margin-top:12px"><table>
         <thead><tr><th>Producto</th><th class="num">Cant.</th><th>Unidad</th><th class="num">Precio unit.</th><th class="num">Cant. que llegó (uso)</th><th class="num">$ / unidad uso</th><th class="num">Total</th><th></th></tr></thead>
         <tbody id="factItems"></tbody>
-        <tfoot><tr><th colspan="6" style="text-align:right">Total factura</th><th class="num" id="fTotal">$0</th><th></th></tr></tfoot>
+        <tfoot>
+          <tr><th colspan="6" style="text-align:right">Subtotal (base)</th><th class="num" id="fSubtotal">$0</th><th></th></tr>
+          <tr><th colspan="6" style="text-align:right">IVA + impuestos (impoconsumo)</th><th class="num"><input type="number" step="any" id="fImpuestos" placeholder="0" style="width:90px;text-align:right"></th><th></th></tr>
+          <tr><th colspan="6" style="text-align:right">Total con impuestos</th><th class="num" id="fTotal">$0</th><th></th></tr>
+        </tfoot>
       </table></div>
       <div class="row" style="margin-top:12px">
         <button class="ghost sm" id="btnAddFactItem">+ Producto</button>
@@ -1786,11 +1790,16 @@ document.getElementById('btnPrintInv').addEventListener('click',printInv);
 const FREST=SB_URL+"/rest/v1/facturas";
 const PREST=SB_URL+"/rest/v1/insumo_precios";
 let FACT=[]; let factRev=[]; let pendingFact=null; let CONV={}; let factEditId=null;
+let factImp=0; // IVA + impuesto al consumo (impoconsumo) de la factura
 function num(x){ if(x==null||x==='')return null; const n=Number(x); return isNaN(n)?null:n; }
 // total de una línea: lo escrito, o cantidad × precio
 function totalLinea(it){ const t=(it.total!=null&&it.total!=='')?Number(it.total):((Number(it.cantidad)||0)*(Number(it.precio)||0)); return isNaN(t)?0:t; }
-// costo por porción/unidad = total de la línea ÷ porciones contadas que llegaron
-function costoPorciones(it){ const p=Number(it.porc); if(!p)return null; const t=totalLinea(it); if(!t)return null; return Math.round(t/p); }
+// suma de las líneas (base, sin impuestos)
+function sumaBaseFact(){ let t=0; factRev.forEach(it=>{ const v=totalLinea(it); if(!isNaN(v))t+=v; }); return t; }
+// factor que reparte IVA + impoconsumo entre todas las líneas (para que el costo sea el REAL pagado)
+function factorImp(){ const b=sumaBaseFact(); const i=Number(factImp)||0; return (b>0&&i>0)?((b+i)/b):1; }
+// costo por porción/unidad = (total de la línea × factor de impuestos) ÷ porciones que llegaron
+function costoPorciones(it){ const p=Number(it.porc); if(!p)return null; const t=totalLinea(it); if(!t)return null; return Math.round(t*factorImp()/p); }
 function llenarInsumosList(){ const dl=document.getElementById('insumosList'); if(dl&&typeof INGS!=='undefined') dl.innerHTML=INGS.map(i=>'<option value="'+i.n.replace(/"/g,'&quot;')+'">').join(''); }
 async function cargarFacturas(){
   llenarInsumosList();
@@ -1876,6 +1885,15 @@ function llenarRevFactura(obj){
   try{autoNitDesdeProv();}catch(e){}
   factRev=(obj.items||[]).map(it=>({producto:it.producto||'',cantidad:it.cantidad,unidad:it.unidad||'',precio:it.precioUnit,total:it.total}));
   if(!factRev.length) factRev=[{producto:'',cantidad:'',unidad:'',precio:'',total:''}];
+  // IVA + impuesto al consumo: lo que lea la IA, o la diferencia entre el total y el subtotal base
+  factImp=0;
+  try{
+    const base=factRev.reduce((s,it)=>{ const v=(it.total!=null&&it.total!=='')?Number(it.total):((Number(it.cantidad)||0)*(Number(it.precio)||0)); return s+(isNaN(v)?0:v); },0);
+    let imp=num(obj.impuestos);
+    if(imp==null && num(obj.total)!=null && base>0 && Number(obj.total)>base) imp=Number(obj.total)-base;
+    factImp=(imp!=null&&imp>0)?Math.round(imp):0;
+  }catch(e){ factImp=0; }
+  const fi=document.getElementById('fImpuestos'); if(fi)fi.value=factImp||'';
   renderFactItems();
 }
 const INGSMAP={}; try{ INGS.forEach(i=>{ INGSMAP[norm(i.n)]=i; }); }catch(e){}
@@ -1959,13 +1977,15 @@ function renderFactItems(){
   factTotal();
 }
 function factTotal(){
-  let t=0; factRev.forEach(it=>{ const v=(it.total!=null&&it.total!=='')?Number(it.total):((Number(it.cantidad)||0)*(Number(it.precio)||0)); if(!isNaN(v))t+=v; });
-  document.getElementById('fTotal').textContent='$'+fmtN(Math.round(t)); return t;
+  const base=sumaBaseFact(); const imp=Number(factImp)||0; const tot=base+imp;
+  const es=document.getElementById('fSubtotal'); if(es)es.textContent='$'+fmtN(Math.round(base));
+  document.getElementById('fTotal').textContent='$'+fmtN(Math.round(tot)); return tot;
 }
 function facturaManual(){
   factEditId=null;
   document.getElementById('fProv').value=''; document.getElementById('fNit').value=''; document.getElementById('fNum').value=''; document.getElementById('fFecha').value=todayISO();
   const td=document.getElementById('fTipoDoc'); if(td)td.value='factura';
+  factImp=0; { const fi=document.getElementById('fImpuestos'); if(fi)fi.value=''; }
   factRev=[{producto:'',cantidad:'',unidad:'',precio:'',total:''}]; renderFactItems();
   llenarInsumosList();
   document.getElementById('secRevFact').hidden=false; document.getElementById('secRevFact').scrollIntoView({behavior:'smooth'});
@@ -1976,7 +1996,7 @@ async function guardarFactura(){
   if(!prov){ msg.textContent='Ponle el proveedor'; return; }
   const items=factRev.filter(it=>String(it.producto||'').trim()).map(it=>{ const pu=costoPorciones(it); return {producto:String(it.producto).trim().toUpperCase(),cantidad:num(it.cantidad),unidad:it.unidad||'',precioUnit:num(it.precio),total:num(it.total),porciones:num(it.porc),unidadUso:(num(it.porc)?(it.usoUnidad||usoDe(it.producto)||'UND'):null),precioUso:pu}; });
   const total=factTotal();
-  const body={proveedor:prov.toUpperCase(),nit:document.getElementById('fNit').value.trim()||null,numero:document.getElementById('fNum').value.trim()||null,fecha:document.getElementById('fFecha').value||null,total:Math.round(total)||null,items,tipo_doc:(document.getElementById('fTipoDoc')||{}).value||'factura'};
+  const body={proveedor:prov.toUpperCase(),nit:document.getElementById('fNit').value.trim()||null,numero:document.getElementById('fNum').value.trim()||null,fecha:document.getElementById('fFecha').value||null,total:Math.round(total)||null,impuestos:Math.round(Number(factImp)||0)||null,items,tipo_doc:(document.getElementById('fTipoDoc')||{}).value||'factura'};
   msg.textContent='Guardando…';
   try{
     let fid=factEditId;
@@ -1990,7 +2010,8 @@ async function guardarFactura(){
       const rows=await r.json(); fid=(rows&&rows[0])?rows[0].id:null;
     }
     if(document.getElementById('fActualizaPrecios').checked){
-      const precios=items.filter(it=>it.precioUnit!=null||it.precioUso!=null).map(it=>({insumo:it.producto,proveedor:body.proveedor,unidad:it.unidad,precio:it.precioUnit,porciones:it.porciones,unidad_uso:it.unidadUso,precio_uso:it.precioUso,fecha:body.fecha,factura_id:fid}));
+      const _f=factorImp();
+      const precios=items.filter(it=>it.precioUnit!=null||it.precioUso!=null).map(it=>({insumo:it.producto,proveedor:body.proveedor,unidad:it.unidad,precio:(it.precioUnit!=null?Math.round(it.precioUnit*_f):null),porciones:it.porciones,unidad_uso:it.unidadUso,precio_uso:it.precioUso,fecha:body.fecha,factura_id:fid}));
       if(precios.length){ try{ await fetch(PREST,{method:"POST",headers:Object.assign({},HDRS,{"Prefer":"return=minimal"}),body:JSON.stringify(precios)}); }catch(e){} }
     }
     msg.textContent=factEditId?'✓ Factura actualizada':'✓ Factura guardada';
@@ -2010,6 +2031,7 @@ function editarFactura(id){
   const td=document.getElementById('fTipoDoc'); if(td)td.value=f.tipo_doc||'factura';
   factRev=(f.items||[]).map(it=>({producto:it.producto||'',cantidad:it.cantidad,unidad:it.unidad||'',precio:it.precioUnit,porc:it.porciones,usoUnidad:it.unidadUso||null,total:it.total}));
   if(!factRev.length) factRev=[{producto:'',cantidad:'',unidad:'',precio:'',porc:'',total:''}];
+  factImp=Number(f.impuestos)||0; { const fi=document.getElementById('fImpuestos'); if(fi)fi.value=factImp||''; }
   renderFactItems();
   const sec=document.getElementById('secRevFact'); sec.hidden=false; sec.scrollIntoView({behavior:'smooth'});
   document.getElementById('factGuardMsg').textContent='Editando factura — cambia lo que necesites y Guardar.';
@@ -2105,6 +2127,7 @@ async function borrarFactura(id){
   if(g('btnManualFact'))g('btnManualFact').onclick=facturaManual;
   if(g('btnAddFactItem'))g('btnAddFactItem').onclick=()=>{factRev.push({producto:'',cantidad:'',unidad:'',precio:'',total:''});renderFactItems();};
   if(g('btnGuardarFact'))g('btnGuardarFact').onclick=guardarFactura;
+  if(g('fImpuestos'))g('fImpuestos').addEventListener('input',()=>{ factImp=Number(g('fImpuestos').value)||0; renderFactItems(); });
   if(g('buscarFact'))g('buscarFact').addEventListener('input',renderFacturas);
   if(g('factProvF'))g('factProvF').addEventListener('change',renderFacturas);
   ['factDesde','factHasta'].forEach(id=>{const e=g(id);if(e)e.addEventListener('change',renderFacturas);});
