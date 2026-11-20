@@ -1800,13 +1800,15 @@ const FREST=SB_URL+"/rest/v1/facturas";
 const PREST=SB_URL+"/rest/v1/insumo_precios";
 let FACT=[]; let factRev=[]; let pendingFact=null; let CONV={}; let factEditId=null;
 let factImp=0; // IVA + impuesto al consumo (impoconsumo) de la factura
+let factDecl=0; // total declarado en el pie de la factura (autoridad para cuadrar centavos)
 function num(x){ if(x==null||x==='')return null; const n=Number(x); return isNaN(n)?null:n; }
 // total de una línea: lo escrito, o cantidad × precio
 function totalLinea(it){ const t=(it.total!=null&&it.total!=='')?Number(it.total):((Number(it.cantidad)||0)*(Number(it.precio)||0)); return isNaN(t)?0:t; }
 // suma de las líneas (base, sin impuestos)
 function sumaBaseFact(){ let t=0; factRev.forEach(it=>{ const v=totalLinea(it); if(!isNaN(v))t+=v; }); return t; }
 // factor que reparte IVA + impoconsumo entre todas las líneas (para que el costo sea el REAL pagado)
-function factorImp(){ const b=sumaBaseFact(); const i=Number(factImp)||0; return (b>0&&i>0)?((b+i)/b):1; }
+function totalFact(){ const b=sumaBaseFact(); let t=b+(Number(factImp)||0); if(factDecl>0 && Math.abs(factDecl-t)<=Math.max(10,b*0.01)) t=factDecl; return t; }
+function factorImp(){ const b=sumaBaseFact(); if(b<=0)return 1; const t=totalFact(); return t>0?(t/b):1; }
 // costo por porción/unidad = (total de la línea × factor de impuestos) ÷ porciones que llegaron
 function costoPorciones(it){ const p=Number(it.porc); if(!p)return null; const t=totalLinea(it); if(!t)return null; return Math.round(t*factorImp()/p); }
 function llenarInsumosList(){ const dl=document.getElementById('insumosList'); if(dl&&typeof INGS!=='undefined') dl.innerHTML=INGS.map(i=>'<option value="'+i.n.replace(/"/g,'&quot;')+'">').join(''); }
@@ -1897,7 +1899,7 @@ function llenarRevFactura(obj){
   // Impuestos A REPARTIR sobre las líneas. Autoridad = el TOTAL declarado (el número grande del pie).
   //  - Factura DIAN: las líneas son base (sin IVA) -> repartir = total - suma de líneas.
   //  - Tirilla POS (Makro): las líneas YA traen IVA (suman el total) -> repartir = 0 (no duplicar).
-  factImp=0;
+  factImp=0; factDecl=Math.round(num(obj.total)||0)||0;
   try{
     const base=factRev.reduce((s,it)=>{ const v=(it.total!=null&&it.total!=='')?Number(it.total):((Number(it.cantidad)||0)*(Number(it.precio)||0)); return s+(isNaN(v)?0:v); },0);
     const tot=num(obj.total);
@@ -1931,14 +1933,31 @@ function packMult(nombre){ const s=norm(nombre||''); let m;
   if(m=s.match(/x\s*(\d{1,3})\b/i)) return parseInt(m[1]);
   return null; }
 function packUM(um){ const u=norm(um||''); if(/\bcaj/i.test(u))return 30; if(/sxp|six/i.test(u))return 6; return null; }
+// Sinónimos de insumo (nombre de proveedor/marca -> insumo del diccionario). Se amplía a medida que aparecen.
+const ALIASINS=[
+ {re:/frytol|super\s*fry/i, n:'ACEITE'},          // Aceite Frytol (Makro) y Super Fry (Juan de Hoyos) = aceite de freír
+ {re:/sr?iracha/i, n:'SIRACHA'},                   // Sriracha / Siracha
+];
+function aliasIns(nombre){ const k=norm(nombre||''); for(const a of ALIASINS){ if(a.re.test(k)) return a.n; } return null; }
+const STOPINS={DE:1,EN:1,PARA:1,CON:1,SIN:1,LA:1,EL:1,Y:1,AL:1};
+function toksIns(n){ return norm(n).split(' ').filter(t=>t.length>=3 && !STOPINS[t]); }
 function matchIng(nombre){ const k=norm(nombre||''); if(!k)return null;
   const al=aliasProv(nombre); if(al && INGSMAP[norm(al)]) return INGSMAP[norm(al)];
+  const ai=aliasIns(nombre); if(ai && INGSMAP[norm(ai)]) return INGSMAP[norm(ai)];
   if(INGSMAP[k])return INGSMAP[k];
   let best=null,bl=0;
   for(const it of INGS){ const n=norm(it.n); if(!n||n.length<3)continue; let hit=(k===n);
     if(!hit){ try{ hit=new RegExp('(^| )'+n.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'( |$)').test(k); }catch(e){ hit=(k.indexOf(n)>=0); } }
     if(hit && n.length>bl){ best=it; bl=n.length; } }
-  return best; }
+  if(best) return best;
+  // 2º intento: facturas Makro pegan los nombres sin espacios ("SALSASOYAAROPET4l") y meten marcas en medio.
+  // Emparejamos por PALABRAS: todas las palabras del insumo (>=3 letras) deben aparecer en el nombre pegado.
+  // Palabra única corta (<4) se descarta (ruidosa, p.ej. "SAL" dentro de "SALSA").
+  const ksp=k.replace(/ /g,''); let bsp=null,bsc=0;
+  for(const it of INGS){ const ts=toksIns(it.n); if(!ts.length)continue;
+    if(ts.length===1 && ts[0].length<4) continue;
+    if(ts.every(t=>ksp.indexOf(t)>=0)){ const sc=ts.reduce((s,t)=>s+t.length,0); if(sc>bsc){ bsp=it; bsc=sc; } } }
+  return bsp; }
 function usoDe(nombre){ const i=matchIng(nombre); if(!i)return null; const b=String(i.b||'').toLowerCase(); if(b==='kg')return 'KG'; if(b==='l')return 'LT'; return 'UND'; }
 function presentKg(nombre){ const _i=matchIng(nombre); if(_i&&_i.pres) return _i.pres; const s=String(nombre||'').toLowerCase().replace(/,/g,'.'); let m;
   if(m=s.match(/(\d+(?:\.\d+)?)\s*kg\b/)) return parseFloat(m[1]);
@@ -1996,7 +2015,7 @@ function renderFactItems(){
   factTotal();
 }
 function factTotal(){
-  const base=sumaBaseFact(); const imp=Number(factImp)||0; const tot=base+imp;
+  const base=sumaBaseFact(); const tot=totalFact();
   const es=document.getElementById('fSubtotal'); if(es)es.textContent='$'+fmtN(Math.round(base));
   document.getElementById('fTotal').textContent='$'+fmtN(Math.round(tot)); return tot;
 }
@@ -2004,13 +2023,13 @@ function facturaManual(){
   factEditId=null;
   document.getElementById('fProv').value=''; document.getElementById('fNit').value=''; document.getElementById('fNum').value=''; document.getElementById('fFecha').value=todayISO();
   const td=document.getElementById('fTipoDoc'); if(td)td.value='factura';
-  factImp=0; { const fi=document.getElementById('fImpuestos'); if(fi)fi.value=''; }
+  factImp=0; factDecl=0; { const fi=document.getElementById('fImpuestos'); if(fi)fi.value=''; }
   factRev=[{producto:'',cantidad:'',unidad:'',precio:'',total:''}]; renderFactItems();
   llenarInsumosList();
   document.getElementById('secRevFact').hidden=false; document.getElementById('secRevFact').scrollIntoView({behavior:'smooth'});
 }
 function cancelarFactura(){
-  factEditId=null; factRev=[]; factImp=0;
+  factEditId=null; factRev=[]; factImp=0; factDecl=0;
   { const fi=document.getElementById('fImpuestos'); if(fi)fi.value=''; }
   { const b=document.getElementById('factItems'); if(b)b.innerHTML=''; }
   document.getElementById('secRevFact').hidden=true;
@@ -2061,7 +2080,7 @@ function editarFactura(id){
   const td=document.getElementById('fTipoDoc'); if(td)td.value=f.tipo_doc||'factura';
   factRev=(f.items||[]).map(it=>({producto:it.producto||'',cantidad:it.cantidad,unidad:it.unidad||'',precio:it.precioUnit,porc:it.porciones,usoUnidad:it.unidadUso||null,total:it.total}));
   if(!factRev.length) factRev=[{producto:'',cantidad:'',unidad:'',precio:'',porc:'',total:''}];
-  factImp=Number(f.impuestos)||0; { const fi=document.getElementById('fImpuestos'); if(fi)fi.value=factImp||''; }
+  factImp=Number(f.impuestos)||0; factDecl=Math.round(Number(f.total)||0)||0; { const fi=document.getElementById('fImpuestos'); if(fi)fi.value=factImp||''; }
   renderFactItems();
   const sec=document.getElementById('secRevFact'); sec.hidden=false; sec.scrollIntoView({behavior:'smooth'});
   document.getElementById('factGuardMsg').textContent='Editando factura — cambia lo que necesites y Guardar.';
@@ -2158,7 +2177,7 @@ async function borrarFactura(id){
   if(g('btnManualFact'))g('btnManualFact').onclick=facturaManual;
   if(g('btnAddFactItem'))g('btnAddFactItem').onclick=()=>{factRev.push({producto:'',cantidad:'',unidad:'',precio:'',total:''});renderFactItems();};
   if(g('btnGuardarFact'))g('btnGuardarFact').onclick=guardarFactura;
-  if(g('fImpuestos'))g('fImpuestos').addEventListener('input',()=>{ factImp=Number(g('fImpuestos').value)||0; renderFactItems(); });
+  if(g('fImpuestos'))g('fImpuestos').addEventListener('input',()=>{ factImp=Number(g('fImpuestos').value)||0; factDecl=0; renderFactItems(); });
   if(g('buscarFact'))g('buscarFact').addEventListener('input',renderFacturas);
   if(g('factProvF'))g('factProvF').addEventListener('change',renderFacturas);
   ['factDesde','factHasta'].forEach(id=>{const e=g(id);if(e)e.addEventListener('change',renderFacturas);});
