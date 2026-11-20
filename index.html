@@ -453,8 +453,8 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
     <section class="card step" id="secFactUpload">
       <div class="rev-head"><div><h2>Facturas de compra</h2><p class="sub">Sube la foto de la factura, revisa y guarda. Queda por proveedor, arma tu base de compras y alimenta el histórico de precios de insumos.</p></div></div>
       <div class="row" style="margin-top:12px">
-        <input id="fileFact" type="file" accept="image/*" capture="environment" hidden>
-        <button class="primary" id="btnPickFact">📷 Tomar / elegir factura</button>
+        <input id="fileFact" type="file" accept="image/*,application/pdf,.pdf" hidden>
+        <button class="primary" id="btnPickFact">📷 Tomar / elegir factura (foto o PDF)</button>
         <button class="ghost" id="btnManualFact">+ Factura manual</button>
         <span id="factMsg" class="muted" style="font-size:.85rem"></span>
       </div>
@@ -488,7 +488,8 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
       <div class="row" style="margin-top:12px">
         <button class="ghost sm" id="btnAddFactItem">+ Producto</button>
         <label class="row" style="gap:6px;align-items:center;font-size:.85rem"><input type="checkbox" id="fActualizaPrecios" checked> Actualizar precios de insumos</label>
-        <button class="primary right" id="btnGuardarFact">Guardar factura</button>
+        <button class="ghost sm right" id="btnCancelFact">✕ Cancelar</button>
+        <button class="primary" id="btnGuardarFact">Guardar factura</button>
       </div>
       <div id="factGuardMsg" class="muted" style="font-size:.85rem;margin-top:8px"></div>
     </section>
@@ -611,6 +612,14 @@ function prepImage(file){return new Promise((res,rej)=>{
   img.onerror=()=>{URL.revokeObjectURL(url);rej(new Error("img"));};
   img.src=url;
 })}
+// lee cualquier archivo a base64 (para PDF, que va tal cual a la IA)
+function fileToB64(file){return new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(String(fr.result).split(",")[1]);fr.onerror=()=>rej(new Error("read"));fr.readAsDataURL(file);});}
+// prepara el archivo de factura: PDF -> se manda tal cual (Gemini lee PDF, todas las páginas); imagen -> se reduce a JPEG
+async function prepFactFile(file){
+  const esPdf=(file&&file.type==='application/pdf')||/\.pdf$/i.test((file&&file.name)||'');
+  if(esPdf){ const base64=await fileToB64(file); return {base64,mediaType:'application/pdf'}; }
+  return await prepImage(file);
+}
 
 async function leerFoto(){
   if(!pendingBlob)return;
@@ -1861,7 +1870,7 @@ async function leerFactura(){
   if(!pendingFact)return;
   const btn=document.getElementById('btnLeerFact'); btn.disabled=true; btn.innerHTML='<span class="spin"></span> Leyendo…';
   try{
-    const {base64,mediaType}=await prepImage(pendingFact);
+    const {base64,mediaType}=await prepFactFile(pendingFact);
     const r=await fetch(FN,{method:"POST",headers:HDRS,body:JSON.stringify({image:base64,mediaType,modo:'factura'})});
     const out=await r.json().catch(()=>({}));
     if(!r.ok){ if(out&&out.cuota)throw new Error("CUOTA"); throw new Error("fn "+r.status); }
@@ -1869,7 +1878,7 @@ async function leerFactura(){
     if(!obj){ const a=t.indexOf("{"), b=t.lastIndexOf("}"); if(a>=0&&b>a) obj=JSON.parse(t.slice(a,b+1)); }
     if(!obj) throw new Error("vacio");
     llenarRevFactura(obj);
-    document.getElementById('secRevFact').hidden=false; document.getElementById('previewFact').hidden=true; pendingFact=null; document.getElementById('fileFact').value='';
+    document.getElementById('secRevFact').hidden=false; document.getElementById('previewFact').hidden=true; pendingFact=null; document.getElementById('fileFact').value=''; { const fm=document.getElementById('factMsg'); if(fm)fm.textContent=''; }
     document.getElementById('secRevFact').scrollIntoView({behavior:'smooth'});
   }catch(err){
     document.getElementById('factMsg').textContent=(err&&err.message==='CUOTA')?'Hoy se alcanzó el límite gratis de lectura. Usa “Factura manual”.':'No pude leer la factura. Prueba una más nítida o usa “Factura manual”.';
@@ -1999,6 +2008,17 @@ function facturaManual(){
   factRev=[{producto:'',cantidad:'',unidad:'',precio:'',total:''}]; renderFactItems();
   llenarInsumosList();
   document.getElementById('secRevFact').hidden=false; document.getElementById('secRevFact').scrollIntoView({behavior:'smooth'});
+}
+function cancelarFactura(){
+  factEditId=null; factRev=[]; factImp=0;
+  { const fi=document.getElementById('fImpuestos'); if(fi)fi.value=''; }
+  { const b=document.getElementById('factItems'); if(b)b.innerHTML=''; }
+  document.getElementById('secRevFact').hidden=true;
+  { const m=document.getElementById('factGuardMsg'); if(m)m.textContent=''; }
+  pendingFact=null; { const ff=document.getElementById('fileFact'); if(ff)ff.value=''; }
+  { const pv=document.getElementById('previewFact'); if(pv)pv.hidden=true; }
+  { const fm=document.getElementById('factMsg'); if(fm)fm.textContent=''; }
+  const up=document.getElementById('secFactUpload'); if(up)up.scrollIntoView({behavior:'smooth'});
 }
 async function guardarFactura(){
   const msg=document.getElementById('factGuardMsg');
@@ -2131,8 +2151,9 @@ async function borrarFactura(id){
 (function wireFact(){
   const g=id=>document.getElementById(id);
   if(g('btnPickFact'))g('btnPickFact').onclick=()=>g('fileFact').click();
-  if(g('fileFact'))g('fileFact').onchange=e=>{const f=e.target.files[0];if(!f)return;pendingFact=f;g('thumbFact').src=URL.createObjectURL(f);g('previewFact').hidden=false;g('factMsg').textContent='';};
-  if(g('btnQuitaFact'))g('btnQuitaFact').onclick=()=>{pendingFact=null;g('fileFact').value='';g('previewFact').hidden=true;};
+  if(g('fileFact'))g('fileFact').onchange=e=>{const f=e.target.files[0];if(!f)return;pendingFact=f;const esPdf=(f.type==='application/pdf')||/\.pdf$/i.test(f.name||'');const th=g('thumbFact');if(esPdf){th.style.display='none';th.removeAttribute('src');g('factMsg').textContent='📄 '+f.name;}else{th.style.display='';th.src=URL.createObjectURL(f);g('factMsg').textContent='';}g('previewFact').hidden=false;};
+  if(g('btnQuitaFact'))g('btnQuitaFact').onclick=()=>{pendingFact=null;g('fileFact').value='';g('previewFact').hidden=true;g('factMsg').textContent='';};
+  if(g('btnCancelFact'))g('btnCancelFact').onclick=cancelarFactura;
   if(g('btnLeerFact'))g('btnLeerFact').onclick=leerFactura;
   if(g('btnManualFact'))g('btnManualFact').onclick=facturaManual;
   if(g('btnAddFactItem'))g('btnAddFactItem').onclick=()=>{factRev.push({producto:'',cantidad:'',unidad:'',precio:'',total:''});renderFactItems();};
