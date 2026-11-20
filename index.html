@@ -1934,6 +1934,8 @@ function usoDe(nombre){ const i=matchIng(nombre); if(!i)return null; const b=Str
 function presentKg(nombre){ const _i=matchIng(nombre); if(_i&&_i.pres) return _i.pres; const s=String(nombre||'').toLowerCase().replace(/,/g,'.'); let m;
   if(m=s.match(/(\d+(?:\.\d+)?)\s*kg\b/)) return parseFloat(m[1]);
   if(m=s.match(/(\d+(?:\.\d+)?)\s*(?:grs|gramos|gr|g)\b/)) return parseFloat(m[1])/1000;
+  if(m=s.match(/(\d+(?:\.\d+)?)\s*(?:lts|lt|litros?|l)\b/)) return parseFloat(m[1]);
+  if(m=s.match(/(\d+(?:\.\d+)?)\s*(?:ml|cc)\b/)) return parseFloat(m[1])/1000;
   if(/\bkg\b/.test(s)) return 1;
   if(m=s.match(/\b(\d{3,4})\b/)) return parseFloat(m[1])/1000;
   return null; }
