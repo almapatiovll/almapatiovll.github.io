@@ -1809,8 +1809,21 @@ function sumaBaseFact(){ let t=0; factRev.forEach(it=>{ const v=totalLinea(it); 
 // factor que reparte IVA + impoconsumo entre todas las líneas (para que el costo sea el REAL pagado)
 function totalFact(){ const b=sumaBaseFact(); let t=b+(Number(factImp)||0); if(factDecl>0 && Math.abs(factDecl-t)<=Math.max(10,b*0.01)) t=factDecl; return t; }
 function factorImp(){ const b=sumaBaseFact(); if(b<=0)return 1; const t=totalFact(); return t>0?(t/b):1; }
-// costo por porción/unidad = (total de la línea × factor de impuestos) ÷ porciones que llegaron
-function costoPorciones(it){ const p=Number(it.porc); if(!p)return null; const t=totalLinea(it); if(!t)return null; return Math.round(t*factorImp()/p); }
+// costo por unidad de uso = (total de la línea × factor de impuestos) ÷ cantidad en la unidad de uso.
+// La cantidad de uso es: it.porc (cuando hubo que convertir UND->kg/L) o, si la compra YA viene en la
+// unidad de uso (p.ej. se compró en kg y se usa en kg), la cantidad misma. Solo queda sin calcular
+// cuando falta convertir de UND a kg/L y no sabemos la presentación (ahí se pide "cuántos llegaron").
+function costoPorciones(it){
+  const t=totalLinea(it); if(!t)return null;
+  let q=Number(it.porc);
+  if(!q){
+    const uso=it.usoUnidad||'';
+    const convPend=(uso==='KG'||uso==='LT') && esUndCompra(it.unidad); // falta pasar de UND a kg/L
+    if(!convPend) q=Number(it.cantidad);
+  }
+  if(!q||isNaN(q))return null;
+  return Math.round(t*factorImp()/q);
+}
 function llenarInsumosList(){ const dl=document.getElementById('insumosList'); if(dl&&typeof INGS!=='undefined') dl.innerHTML=INGS.map(i=>'<option value="'+i.n.replace(/"/g,'&quot;')+'">').join(''); }
 async function cargarFacturas(){
   llenarInsumosList();
@@ -2046,7 +2059,14 @@ async function guardarFactura(){
   const msg=document.getElementById('factGuardMsg');
   const prov=document.getElementById('fProv').value.trim();
   if(!prov){ msg.textContent='Ponle el proveedor'; return; }
-  const items=factRev.filter(it=>String(it.producto||'').trim()).map(it=>{ const pu=costoPorciones(it); return {producto:String(it.producto).trim().toUpperCase(),cantidad:num(it.cantidad),unidad:it.unidad||'',precioUnit:num(it.precio),total:num(it.total),porciones:num(it.porc),unidadUso:(num(it.porc)?(it.usoUnidad||usoDe(it.producto)||'UND'):null),precioUso:pu}; });
+  const items=factRev.filter(it=>String(it.producto||'').trim()).map(it=>{
+    const pu=costoPorciones(it);
+    const uso=it.usoUnidad||usoDe(it.producto)||'';
+    const convPend=(uso==='KG'||uso==='LT') && esUndCompra(it.unidad);
+    const qUso=(num(it.porc)!=null)?num(it.porc):(!convPend?num(it.cantidad):null);   // cantidad en unidad de uso
+    const uu=(pu!=null)?(uso||it.unidad||'UND'):null;
+    return {producto:String(it.producto).trim().toUpperCase(),cantidad:num(it.cantidad),unidad:it.unidad||'',precioUnit:num(it.precio),total:num(it.total),porciones:qUso,unidadUso:uu,precioUso:pu};
+  });
   const total=factTotal();
   const body={proveedor:prov.toUpperCase(),nit:document.getElementById('fNit').value.trim()||null,numero:document.getElementById('fNum').value.trim()||null,fecha:document.getElementById('fFecha').value||null,total:Math.round(total)||null,impuestos:Math.round(Number(factImp)||0)||null,items,tipo_doc:(document.getElementById('fTipoDoc')||{}).value||'factura'};
   msg.textContent='Guardando…';
