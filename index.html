@@ -487,6 +487,7 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
       </table></div>
       <div class="row" style="margin-top:12px">
         <button class="ghost sm" id="btnAddFactItem">+ Producto</button>
+        <button class="ghost sm" id="btnToteat" title="Genera el XML con los nombres y códigos de Toteat para que las chicas lo suban al botón XML de Toteat">⬇ Descargar para Toteat</button>
         <label class="row" style="gap:6px;align-items:center;font-size:.85rem"><input type="checkbox" id="fActualizaPrecios" checked> Actualizar precios de insumos</label>
         <button class="ghost sm right" id="btnCancelFact">✕ Cancelar</button>
         <button class="primary" id="btnGuardarFact">Guardar factura</button>
@@ -2056,6 +2057,139 @@ function cancelarFactura(){
   { const fm=document.getElementById('factMsg'); if(fm)fm.textContent=''; }
   const up=document.getElementById('secFactUpload'); if(up)up.scrollIntoView({behavior:'smooth'});
 }
+/* ===================== EXPORTAR A TOTEAT (XML) ===================== */
+let TMAE=null, TMAP=null, TTPL=null;
+function tnorm(s){ return String(s||'').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Z0-9 ]/g,' ').replace(/\s+/g,' ').trim(); }
+async function tLoad(){
+  if(!TMAE){ try{ TMAE=await (await fetch('toteat_maestro.json',{cache:'no-store'})).json(); }catch(e){ TMAE=[]; } TMAP={}; TMAE.forEach(m=>{ TMAP[tnorm(m[1])]=m; }); }
+  if(TTPL==null){ try{ TTPL=await (await fetch('toteat_template.xml',{cache:'no-store'})).text(); }catch(e){ TTPL=''; } }
+}
+function tcod(c){ return (TMAE||[]).find(m=>m[0]===c)||null; }
+const TGRAM={ CAR006:57.5, CAR017:56.4 }; // g por und (convierte kg->und)
+function tSebas(d){
+ if(/MANDARIN/.test(d))return 'FRV025';
+ if(/\bLIMON/.test(d))return 'FRV026';
+ if(/CEBOLLA.*(MORAD|ROJ)/.test(d))return 'FRV012';
+ if(/CEBOLLA.*CABEZON/.test(d))return 'FRV013';
+ if(/TOMATE.*GRUES/.test(d))return 'FRV053';
+ if(/TOMATE.*(PAREJ|CHONT)/.test(d))return 'FRV052';
+ if(/GULUPA/.test(d))return 'BEBS013';
+ if(/MARACUYA/.test(d))return 'FRV030';
+ if(/\bMORA/.test(d))return 'FRV034';
+ if(/MANGO/.test(d))return 'FRV028';
+ if(/PI[NÑ]A/.test(d))return /TROZO|CALAD/.test(d)?null:'FRV043';
+ if(/CRIOLLA/.test(d))return 'FRV036';
+ if(/PASTUSA/.test(d))return 'FRV037';
+ if(/FRESA/.test(d))return 'FRV019';
+ if(/LULO/.test(d))return 'FRV027';
+ if(/FEIJOA/.test(d))return 'FRV018';
+ if(/\bAPIO/.test(d))return 'FRV007';
+ if(/MANZANA.*VERD/.test(d))return 'FRV029';
+ if(/ZU[QK]UINI.*AMARILL/.test(d))return 'FRV060';
+ if(/ZU[QK]UINI.*VERD/.test(d))return 'FRV061';
+ if(/TORONJA|POMELO/.test(d))return 'FRV056';
+ return null;
+}
+const TPROV=[
+ {re:/\bARA\b|JERONIM/, f:d=> /CARNE|POLLO|COSTILLA|FILETE|CHULET|\bALA\b|CHICHARR|LOMO|PECHUGA|CERDO|\bRES\b|MOLI/.test(d)?'CAR022':'ABA001'},
+ {re:/ALVARO UMANA/, f:d=> /MOLID|CARNE/.test(d)?'CAR004':null},
+ {re:/MARIANA|RICAFRUTA|RICA FRUTA/, f:d=> /MARACUYA/.test(d)?'FRV046': /MORA/.test(d)?'FRV047': /MANGO/.test(d)?'FRV045':null},
+ {re:/BERDU/, f:d=> /GULUPA/.test(d)?'BEBS023':null},
+ {re:/LECHONAS|SACHICA|QUEVEDO/, f:d=> /LONGANIZA/.test(d)?'CAR017': /CHORIZO/.test(d)?'CAR006':null},
+ {re:/BIFF/, f:d=> /COSTILLA/.test(d)?'CAR010': /PANCETA|TOCINETA|PLANCHA/.test(d)?'CAR020':null},
+ {re:/SEBASTIAN|VIVAS/, f:tSebas},
+];
+const TALIAS=[
+ [/FRYTOL|SUPER\s*FRY/,'ABA004'],[/FRUCO/,'ABA051'],[/SR?IRACHA/,'ABA056'],[/REFISAL/,'ABA049'],
+ [/AHUMAR/,'ABA052'],[/COUNTRY\s*RANCH|CONTRY\s*RANCH/,'ABA003'],
+ [/PARMESANO.*(ALPINA|RALL)|RALL.*PARMESANO/,'LAC010'],[/FETTUCCIN|FETUCCIN|MONTICELLO/,'ABA023'],
+ [/DIBUFALA|BOCCONCINI/,'LAC004'],[/DON\s*SIMON/,'BEB065'],
+ [/(CHORIZO|CHRZ).*JALAPEN|JALAPEN.*CHORIZO/,'CAR007'],[/\bARROZ/,'ABA001'],[/MARGARINA|\bMGNA\b/,'ABA033'],
+ [/PIMIENTA.*NEGRA|NEGRA.*PIMIENTA/,'ABA046'],
+];
+function toteatMatch(desc, prov){
+ const d=tnorm(desc), p=tnorm(prov);
+ for(const r of TPROV){ if(r.re.test(p)){ const c=r.f(d); if(c&&tcod(c))return tcod(c); } }
+ for(const a of TALIAS){ if(a[0].test(d)){ const m=tcod(a[1]); if(m)return m; } }
+ if(TMAP[d])return TMAP[d];
+ const dsp=d.replace(/ /g,''); let best=null,bl=0;
+ for(const m of (TMAE||[])){ const ts=tnorm(m[1]).split(' ').filter(t=>t.length>=4); if(!ts.length)continue; if(ts.every(t=>dsp.indexOf(t)>=0)){ const sc=ts.reduce((s,t)=>s+t.length,0); if(sc>bl){best=m;bl=sc;} } }
+ return best;
+}
+function tQty(it,m){
+ const base=(m[2]||'').toUpperCase(); const cant=Number(it.cantidad)||0; const uni=tnorm(it.unidad);
+ const esPeso=/KG|KILO|GR|GRAMO/.test(uni)||uni===''; const esUnd=/UND|^UN$|UNIDAD/.test(uni);
+ if(base==='UN'||base==='BOT'||base==='PTN'){ if(esPeso && TGRAM[m[0]]) return Math.round(cant*1000/TGRAM[m[0]]); return cant; }
+ if(base==='L'){ if(esUnd){ const pk=presentKg(it.producto); return pk? +(cant*pk).toFixed(2):cant; } return cant; }
+ return cant;
+}
+function tBuildItems(){
+ const prov=(document.getElementById('fProv')||{}).value||'';
+ const out=[], faltan=[];
+ factRev.forEach(it=>{ if(!String(it.producto||'').trim())return;
+   const m=toteatMatch(it.producto,prov);
+   if(!m){ faltan.push(it.producto); return; }
+   const qty=tQty(it,m); const tot=Math.round(totalLinea(it)*factorImp());
+   out.push({cod:m[0],nombre:m[1],qty:qty,total:tot});
+ });
+ return {items:out,faltan};
+}
+function tEsc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function randHex(n){ let s=''; for(let i=0;i<n;i++)s+='0123456789abcdef'[Math.floor(Math.random()*16)]; return s; }
+function tLine(i,qty,total,desc,cod){
+ const price=qty?total/qty:0;
+ return '<cac:InvoiceLine><cbc:ID>'+i+'</cbc:ID>'
+  +'<cbc:InvoicedQuantity unitCode="94">'+qty.toFixed(2)+'</cbc:InvoicedQuantity>'
+  +'<cbc:LineExtensionAmount currencyID="COP">'+total.toFixed(2)+'</cbc:LineExtensionAmount>'
+  +'<cac:TaxTotal><cbc:TaxAmount currencyID="COP">0.00</cbc:TaxAmount><cac:TaxSubtotal>'
+  +'<cbc:TaxableAmount currencyID="COP">'+total.toFixed(2)+'</cbc:TaxableAmount><cbc:TaxAmount currencyID="COP">0.00</cbc:TaxAmount>'
+  +'<cac:TaxCategory><cbc:Percent>0.00</cbc:Percent><cac:TaxScheme><cbc:ID>01</cbc:ID><cbc:Name>IVA</cbc:Name></cac:TaxScheme></cac:TaxCategory>'
+  +'</cac:TaxSubtotal></cac:TaxTotal>'
+  +'<cac:Item><cbc:Description>'+desc+'</cbc:Description>'
+  +'<cac:StandardItemIdentification><cbc:ID schemeID="999" schemeName="Estandar de adopcion del contribuyente">'+cod+'</cbc:ID></cac:StandardItemIdentification></cac:Item>'
+  +'<cac:Price><cbc:PriceAmount currencyID="COP">'+price.toFixed(2)+'</cbc:PriceAmount><cbc:BaseQuantity unitCode="94">'+qty.toFixed(2)+'</cbc:BaseQuantity></cac:Price></cac:InvoiceLine>';
+}
+function tGenXML(prov,nit,num,fecha,items){
+ let x=TTPL;
+ x=x.split('7395ce0ade1bcae42004150029cb769a9f9e0b9a76d0ae25bd53920b3a76865219b312bf739c1137112a098af53d872d').join(randHex(96));
+ x=x.split('17063840').join((String(nit||'').replace(/\D/g,''))||'222222222');
+ x=x.split('FEV1716').join((String(num||'GEN').replace(/[^A-Za-z0-9]/g,''))||'GEN');
+ x=x.split('ALVARO UMAÑA CRANE').join(tEsc((prov||'PROVEEDOR').toUpperCase()));
+ x=x.split('<cbc:IssueDate>2026-11-20</cbc:IssueDate>').join('<cbc:IssueDate>'+(fecha||'2026-01-01')+'</cbc:IssueDate>');
+ const tot=items.reduce((s,it)=>s+it.total,0);
+ const body=items.map((it,i)=>tLine(i+1,it.qty,it.total,tEsc(it.nombre),it.cod)).join('');
+ const nt='<cac:LegalMonetaryTotal><cbc:LineExtensionAmount currencyID="COP">'+tot.toFixed(2)+'</cbc:LineExtensionAmount>'
+  +'<cbc:TaxExclusiveAmount currencyID="COP">'+tot.toFixed(2)+'</cbc:TaxExclusiveAmount>'
+  +'<cbc:TaxInclusiveAmount currencyID="COP">'+tot.toFixed(2)+'</cbc:TaxInclusiveAmount>'
+  +'<cbc:AllowanceTotalAmount currencyID="COP">0.00</cbc:AllowanceTotalAmount>'
+  +'<cbc:ChargeTotalAmount currencyID="COP">0.00</cbc:ChargeTotalAmount>'
+  +'<cbc:PayableAmount currencyID="COP">'+tot.toFixed(2)+'</cbc:PayableAmount></cac:LegalMonetaryTotal>';
+ const a=x.indexOf('<![CDATA['); const b=x.indexOf(']]>',a);
+ if(a>=0&&b>a){ let inv=x.slice(a+9,b);
+   inv=inv.replace(/<cac:InvoiceLine>[\s\S]*?<\/cac:InvoiceLine>/,body);
+   inv=inv.replace(/<cac:LegalMonetaryTotal>[\s\S]*?<\/cac:LegalMonetaryTotal>/,nt);
+   x=x.slice(0,a+9)+inv+x.slice(b);
+ }
+ return x;
+}
+async function descargarToteat(){
+ const el=document.getElementById('factGuardMsg'); if(el)el.textContent='Preparando XML para Toteat…';
+ await tLoad();
+ if(!TTPL){ if(el)el.textContent='No pude cargar la plantilla de Toteat.'; return; }
+ const {items,faltan}=tBuildItems();
+ if(!items.length){ if(el)el.textContent='Ningún producto se pudo emparejar con el maestro de Toteat.'; return; }
+ const prov=(document.getElementById('fProv')||{}).value||'';
+ const nit=(document.getElementById('fNit')||{}).value||'';
+ const num=(document.getElementById('fNum')||{}).value||('GEN'+Date.now());
+ const fecha=(document.getElementById('fFecha')||{}).value||todayISO();
+ const xml=tGenXML(prov,nit,num,fecha,items);
+ const blob=new Blob([xml],{type:'application/xml'}); const url=URL.createObjectURL(blob);
+ const a=document.createElement('a'); a.href=url; a.download='TOTEAT_'+(String(num).replace(/[^A-Za-z0-9]/g,'')||'factura')+'.xml';
+ document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+ let msg='✓ XML para Toteat listo: '+items.length+' producto(s) emparejado(s).';
+ if(faltan.length) msg+=' ⚠ Sin emparejar: '+faltan.slice(0,6).join(', ')+(faltan.length>6?'…':'')+' (añádelos a mano en Toteat).';
+ if(el)el.textContent=msg;
+}
 async function guardarFactura(){
   const msg=document.getElementById('factGuardMsg');
   const prov=document.getElementById('fProv').value.trim();
@@ -2197,6 +2331,7 @@ async function borrarFactura(id){
   if(g('fileFact'))g('fileFact').onchange=e=>{const f=e.target.files[0];if(!f)return;pendingFact=f;const esPdf=(f.type==='application/pdf')||/\.pdf$/i.test(f.name||'');const th=g('thumbFact');if(esPdf){th.style.display='none';th.removeAttribute('src');g('factMsg').textContent='📄 '+f.name;}else{th.style.display='';th.src=URL.createObjectURL(f);g('factMsg').textContent='';}g('previewFact').hidden=false;};
   if(g('btnQuitaFact'))g('btnQuitaFact').onclick=()=>{pendingFact=null;g('fileFact').value='';g('previewFact').hidden=true;g('factMsg').textContent='';};
   if(g('btnCancelFact'))g('btnCancelFact').onclick=cancelarFactura;
+  if(g('btnToteat'))g('btnToteat').onclick=descargarToteat;
   if(g('btnLeerFact'))g('btnLeerFact').onclick=leerFactura;
   if(g('btnManualFact'))g('btnManualFact').onclick=facturaManual;
   if(g('btnAddFactItem'))g('btnAddFactItem').onclick=()=>{factRev.push({producto:'',cantidad:'',unidad:'',precio:'',total:''});renderFactItems();};
