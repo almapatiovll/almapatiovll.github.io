@@ -6,7 +6,7 @@
 <title>Alma Patio — Producciones</title>
 <script>
 /* Auto-actualizador: si el servidor tiene una version mas nueva, recarga sin caché (una sola vez por sesión). */
-(function(){var V='2026-11-22g';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
+(function(){var V='2026-11-22h';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2133,6 +2133,10 @@ function toteatMatch(desc, prov){
 }
 function tQty(it,m){
  const base=(m[2]||'').toUpperCase(); const cant=Number(it.cantidad)||0; const uni=tnorm(it.unidad);
+ // Si el usuario llenó "cantidad que llegó (uso)" (it.porc), esa es la cantidad real en la unidad de uso
+ // (= unidad base del maestro: porciones, litros, und). Esa manda sobre la facturada.
+ const usoQ=(it.porc!=null && it.porc!=='' && !isNaN(it.porc))?Number(it.porc):null;
+ if(usoQ!=null) return usoQ;
  const esPeso=/KG|KILO|GR|GRAMO/.test(uni)||uni===''; const esUnd=/UND|^UN$|UNIDAD/.test(uni);
  if(base==='UN'||base==='BOT'||base==='PTN'){ if(esPeso && TGRAM[m[0]]) return Math.round(cant*1000/TGRAM[m[0]]); return cant; }
  if(base==='L'){ if(esUnd){ const pk=presentKg(it.producto); return pk? +(cant*pk).toFixed(2):cant; } return cant; }
