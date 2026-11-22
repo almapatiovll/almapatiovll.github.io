@@ -6,7 +6,7 @@
 <title>Alma Patio — Producciones</title>
 <script>
 /* Auto-actualizador: si el servidor tiene una version mas nueva, recarga sin caché (una sola vez por sesión). */
-(function(){var V='2026-11-22e';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
+(function(){var V='2026-11-22f';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1934,6 +1934,9 @@ function llenarRevFactura(obj){
   renderFactItems();
 }
 const INGSMAP={}; try{ INGS.forEach(i=>{ INGSMAP[norm(i.n)]=i; }); }catch(e){}
+// Sincroniza el catálogo del app con el maestro de Toteat (284 ítems): cualquier ítem del maestro
+// que el app no tenga en su lista se agrega, para que las facturas no lo marquen "producto nuevo".
+try{ if(typeof TOTEAT==='object'&&TOTEAT){ Object.keys(TOTEAT).forEach(function(k){ var t=TOTEAT[k]; if(!t)return; var nm=t.n||k; var key=norm(nm); if(!key||INGSMAP[key])return; var b=String(t.b||'').toLowerCase(); b=(b==='kg')?'kg':(b==='l')?'l':'un'; var o={n:String(nm).toUpperCase(),c:Number(t.c)||0,b:b}; INGS.push(o); INGSMAP[key]=o; }); } }catch(e){}
 // Reconocimiento de proveedores (ej. Bavaria/KOPPS): código o sigla -> producto de catálogo. Orden: lo más específico primero.
 const ALIASPROV=[
  {re:/\b3759\b|cr\s*br330|club\s*col\w*\s*rjr|club\s*col\w*\s*roja|\broja\b/i, n:'CLUB ROJA'},
@@ -1961,6 +1964,7 @@ const ALIASINS=[
  {re:/arroz/i, n:'ARROZ PERSONAL'},                // Arroz (Makro) = arroz para personal
  {re:/tomate\s*grueso|largavida|larga\s*vida/i, n:'TOMATE LARGAVIDA'}, // Sebastián Vivas: tomate grueso = largavida
  {re:/tomate\s*parejo/i, n:'TOMATE CHONTO'},       // Sebastián Vivas: tomate parejo = chonto
+ {re:/tocineta|tocino/i, n:'TOCINETA X LIBRA'},    // tocineta = tocineta x libra
 ];
 function aliasIns(nombre){ const k=norm(nombre||''); for(const a of ALIASINS){ if(a.re.test(k)) return a.n; } return null; }
 const STOPINS={DE:1,EN:1,PARA:1,CON:1,SIN:1,LA:1,EL:1,Y:1,AL:1};
@@ -2115,7 +2119,7 @@ const TALIAS=[
  [/FLOR DE CANA/,'BEB070'],[/CINZANO.*(SPRITZ|SPIRITZ)|(SPRITZ|SPIRITZ).*CINZANO/,'BEB011'],[/OJO DE TIGRE/,'BEB049'],
  [/JIMADOR.*(BLANC|SILVER|AGAVE)/,'BEB032'],[/JIMADOR.*REPOSAD/,'BEB031'],
  [/(CHORIZO|CHRZ).*JALAPEN|JALAPEN.*CHORIZO/,'CAR007'],[/\bARROZ/,'ABA001'],[/MARGARINA|\bMGNA\b/,'ABA033'],
- [/PIMIENTA.*NEGRA|NEGRA.*PIMIENTA/,'ABA046'],
+ [/PIMIENTA.*NEGRA|NEGRA.*PIMIENTA/,'ABA046'],[/TOCINETA|TOCINO/,'CAR024'],
 ];
 function toteatMatch(desc, prov){
  const d=tnorm(desc), p=tnorm(prov);
