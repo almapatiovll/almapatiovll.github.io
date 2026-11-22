@@ -6,7 +6,7 @@
 <title>Alma Patio — Producciones</title>
 <script>
 /* Auto-actualizador: si el servidor tiene una version mas nueva, recarga sin caché (una sola vez por sesión). */
-(function(){var V='2026-11-22h';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
+(function(){var V='2026-11-22i';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2144,13 +2144,17 @@ function tQty(it,m){
 }
 function tBuildItems(){
  const prov=(document.getElementById('fProv')||{}).value||'';
- const out=[], faltan=[];
+ const map={}, order=[], faltan=[];
  factRev.forEach(it=>{ if(!String(it.producto||'').trim())return;
    const m=toteatMatch(it.producto,prov);
    if(!m){ faltan.push(it.producto); return; }
    const qty=tQty(it,m); const tot=Math.round(totalLinea(it)*factorImp());
-   out.push({cod:m[0],nombre:m[1],qty:qty,total:tot});
+   // Agrupa por código: varias líneas del mismo producto suman cantidad y total.
+   // Así una línea de promoción ($1) reparte y baja el precio promedio de las demás.
+   if(!map[m[0]]){ map[m[0]]={cod:m[0],nombre:m[1],qty:0,total:0}; order.push(m[0]); }
+   map[m[0]].qty += qty; map[m[0]].total += tot;
  });
+ const out=order.map(c=>{ const o=map[c]; o.qty=+o.qty.toFixed(2); return o; });
  return {items:out,faltan};
 }
 function tEsc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
