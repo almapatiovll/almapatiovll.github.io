@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Alma Patio — Producciones</title>
+<script>
+/* Auto-actualizador: si el servidor tiene una version mas nueva, recarga sin caché (una sola vez por sesión). */
+(function(){var V='2026-11-22b';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700;9..144,900&family=Nunito:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -2207,6 +2211,21 @@ async function guardarFactura(){
   });
   const total=factTotal();
   const body={proveedor:prov.toUpperCase(),nit:document.getElementById('fNit').value.trim()||null,numero:document.getElementById('fNum').value.trim()||null,fecha:document.getElementById('fFecha').value||null,total:Math.round(total)||null,impuestos:Math.round(Number(factImp)||0)||null,items,tipo_doc:(document.getElementById('fTipoDoc')||{}).value||'factura'};
+  if(!factEditId && Array.isArray(FACT)){
+    const nprov=(body.proveedor||'').toUpperCase().trim();
+    const nnum=(body.numero||'').trim();
+    const dup=FACT.find(f=>{
+      if(!f) return false;
+      if((f.proveedor||'').toUpperCase().trim()!==nprov) return false;
+      if(nnum && (f.numero||'').trim()===nnum) return true;
+      if(body.fecha && f.fecha===body.fecha && Math.abs((Number(f.total)||0)-(Number(body.total)||0))<=5) return true;
+      return false;
+    });
+    if(dup){
+      const ok=confirm('⚠ POSIBLE FACTURA DUPLICADA\n\nYa está guardada:\n'+(dup.proveedor||'—')+(dup.numero?('  ·  N° '+dup.numero):'')+(dup.fecha?('  ·  '+dup.fecha):'')+'  ·  $'+fmtN(dup.total)+'\n\n¿Guardarla de todas formas?');
+      if(!ok){ msg.textContent='No se guardó: ya existe esa factura.'; return; }
+    }
+  }
   msg.textContent='Guardando…';
   try{
     let fid=factEditId;
