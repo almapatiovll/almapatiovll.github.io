@@ -6,7 +6,7 @@
 <title>Alma Patio — Producciones</title>
 <script>
 /* Auto-actualizador: si el servidor tiene una version mas nueva, recarga sin caché (una sola vez por sesión). */
-(function(){var V='2026-11-22j';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
+(function(){var V='2026-11-23a';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -389,6 +389,7 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
       <div class="row" style="margin-bottom:10px">
         <button class="ghost sm" id="btnAddInv">＋ Agregar ítem</button>
         <button class="primary sm" id="btnGuardarConteo">Guardar conteo</button>
+        <button class="ghost sm" id="btnBlanco">🧹 Dejar en blanco</button>
         <span class="row" id="invTipoF" style="gap:4px;margin-left:auto">
           <button class="primary sm" data-tf="todo">Todo</button>
           <button class="ghost sm" data-tf="insumo">Insumos</button>
@@ -1553,6 +1554,17 @@ async function guardarConteo(){
   }catch(e){ msg.textContent='Error al guardar'; }
   setTimeout(()=>{msg.textContent='';},2500);
 }
+async function blanquearConteo(){
+  const msg=document.getElementById('invMsg'); if(msg)msg.textContent='Dejando en blanco…';
+  try{
+    await fetch(IREST+"?id=gt.0",{method:"PATCH",headers:Object.assign({},HDRS,{"Prefer":"return=minimal"}),
+      body:JSON.stringify({cantidad:null,fecha_conteo:null,responsable:null})});
+    INV.forEach(it=>{it.cantidad=null;it.fecha_conteo=null;it.responsable=null;});
+    renderAreaTabs(); renderInv();
+    if(msg)msg.textContent='✓ Conteo en blanco — listo para contar';
+  }catch(e){ if(msg)msg.textContent='Error al dejar en blanco'; }
+  setTimeout(()=>{if(msg)msg.textContent='';},3000);
+}
 document.getElementById('btnAddInv').addEventListener('click',abrirFormInv);
 function abrirFormInv(){
   const w=document.getElementById('invFormWrap');
@@ -1644,6 +1656,7 @@ async function guardarCorte(){
     if(!r.ok) throw 0;
     await cargarCortes(); renderJuegoSelectores();
     alert('✓ Corte guardado: '+etiqueta+' — $'+fmtN(snap.total));
+    if(confirm('El corte quedó guardado en el historial.\n\n¿Dejar el conteo EN BLANCO para empezar el siguiente? (el historial se conserva)')) await blanquearConteo();
   }catch(e){ alert('Error al guardar el corte'); }
 }
 async function cargarCortes(){
@@ -1715,6 +1728,7 @@ function excelJuego(){
 }
 (function(){const g=id=>document.getElementById(id);
   if(g('btnGuardarCorte'))g('btnGuardarCorte').addEventListener('click',guardarCorte);
+  if(g('btnBlanco'))g('btnBlanco').addEventListener('click',function(){ if(confirm('¿Dejar TODO el conteo en blanco?\n\nSi quieres conservar lo contado, usa primero “💾 Guardar corte”.')) blanquearConteo(); });
   if(g('btnQR'))g('btnQR').addEventListener('click',abrirQRPlanillas);
   if(g('buscarCons'))g('buscarCons').addEventListener('input',renderConsolidado);
   if(g('btnExcelCons'))g('btnExcelCons').addEventListener('click',excelCons);
