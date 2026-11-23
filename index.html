@@ -1516,13 +1516,13 @@ function renderInv(){
       tr.innerHTML='<td>'+it.nombre+(it.tipo==='preparacion'?' <span class="chip-badge">receta</span>':'')+'</td>'
         +'<td>'+(it.unidad||'')+'</td>'
         +'<td class="num">'+(it.costo!=null?'$'+fmtN(it.costo):'—')+'</td>'
-        +'<td class="num"><input type="number" step="any" value="'+(it.cantidad!=null?it.cantidad:'')+'" data-id="'+it.id+'" class="invq" style="width:82px;text-align:right"></td>'
+        +'<td class="num"><input type="text" inputmode="decimal" value="'+(it.cantidad!=null?it.cantidad:'')+'" data-id="'+it.id+'" class="invq" style="width:82px;text-align:right"></td>'
         +'<td class="num invval">'+(val==null?'':'$'+fmtN(val))+'</td>'
         +'<td><button class="ghost sm invdel" data-id="'+it.id+'">✕</button></td>';
       b.appendChild(tr);
     }
     b.querySelectorAll('.invq').forEach(inp=>inp.addEventListener('input',()=>{
-      const it=INV.find(x=>x.id==inp.dataset.id); it.cantidad=inp.value;
+      const it=INV.find(x=>x.id==inp.dataset.id); it.cantidad=(inp.value||'').replace(',','.');
       inp.closest('tr').querySelector('.invval').textContent=(valorItem(it)==null?'':'$'+fmtN(valorItem(it)));
       totArea(); renderResumen();
     }));
@@ -2506,7 +2506,7 @@ async function conteoMode(areaRaw){
   if(!items.length){ box.innerHTML='<div style="text-align:center;padding:30px;color:#e8a">No hay productos en '+esc(area)+'. Avisa a administración.</div>'; return; }
   box.innerHTML=items.map(it=>'<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #3a2416">'
     +'<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:.98rem">'+esc(it.nombre)+(it.tipo==='preparacion'?' <span style="font-size:.7rem;color:#d9a066">receta</span>':'')+'</div></div>'
-    +'<input type="number" step="any" inputmode="decimal" data-id="'+it.id+'" value="'+(it.cantidad!=null?it.cantidad:'')+'" style="width:92px;padding:11px 8px;text-align:right;border-radius:9px;border:1px solid #5a3a22;background:#1c120a;color:#f3e9df;font-size:1.05rem">'
+    +'<input type="text" inputmode="decimal" autocomplete="off" data-id="'+it.id+'" value="'+(it.cantidad!=null?it.cantidad:'')+'" style="width:92px;padding:11px 8px;text-align:right;border-radius:9px;border:1px solid #5a3a22;background:#1c120a;color:#f3e9df;font-size:1.05rem">'
     +'<span style="font-size:.8rem;color:#8a7a5a;min-width:30px">'+esc(it.unidad||'')+'</span></div>').join('');
   document.getElementById('cqSave').addEventListener('click',async()=>{
     const nom=document.getElementById('cqNom').value.trim(); const msg=document.getElementById('cqMsg');
@@ -2514,7 +2514,7 @@ async function conteoMode(areaRaw){
     const btn=document.getElementById('cqSave'); btn.disabled=true; btn.textContent='Guardando…';
     const hoy=todayISO(); let okc=0,err=0;
     for(const inp of [...document.querySelectorAll('#cqItems input[data-id]')]){
-      const v=inp.value;
+      const v=(inp.value||'').trim().replace(',','.');
       try{ const r=await fetch(IREST+"?id=eq."+inp.dataset.id,{method:"PATCH",headers:Object.assign({},HDRS,{"Prefer":"return=minimal"}),
         body:JSON.stringify({cantidad:(v===''||v==null?null:Number(v)),fecha_conteo:hoy,responsable:nom})}); r.ok?okc++:err++; }catch(e){ err++; }
     }
