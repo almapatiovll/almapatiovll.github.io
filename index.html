@@ -6,7 +6,7 @@
 <title>Alma Patio — Producciones</title>
 <script>
 /* Auto-actualizador: si el servidor tiene una version mas nueva, recarga sin caché (una sola vez por sesión). */
-(function(){var V='2026-11-22i';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
+(function(){var V='2026-11-22j';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2121,6 +2121,11 @@ const TALIAS=[
  [/(CHORIZO|CHRZ).*JALAPEN|JALAPEN.*CHORIZO/,'CAR007'],[/\bARROZ/,'ABA001'],[/MARGARINA|\bMGNA\b/,'ABA033'],
  [/PIMIENTA.*NEGRA|NEGRA.*PIMIENTA/,'ABA046'],[/TOCINETA|TOCINO/,'CAR024'],
  [/SOLECA.*(BLANC|CHARD|SAUV)|(BLANC|CHARD).*SOLECA/,'BEB057'],[/SOLECA/,'BEB058'], // Diego y Compañía: Soleca blanco/chardonnay->BEB057, resto (tinto/carmenere/reserva)->BEB058
+ [/FIL.*SALMON|\bSALMON/,'CAR011'],[/MOZZARELLA|MOZARELLA/,'LAC007'],[/\bPECHUGA/,'CAR021'],[/\bMOJARRA/,'CAR018'],
+ [/AJO\s*PELADO|\bAJO\b/,'FRV003'],[/ARANDANO/,'FRV008'],[/\bAZUCAR/,'ABA012'],
+ [/CHEES.?CAKE.*OREO|OREO.*CHEES.?CAKE/,'POS004'],[/CHEES.?CAKE|CHEESECAKE/,'POS001'],
+ [/MIZUNA.*(ROJ|MORAD)|(ROJ|MORAD).*MIZUNA/,'FRV032'],[/MIZUNA/,'FRV033'],
+ [/LIMON.*COCO|COCO.*LIMON|LIMONADA.*COCO/,'BEBS015'],
 ];
 function toteatMatch(desc, prov){
  const d=tnorm(desc), p=tnorm(prov);
@@ -2155,6 +2160,11 @@ function tBuildItems(){
    map[m[0]].qty += qty; map[m[0]].total += tot;
  });
  const out=order.map(c=>{ const o=map[c]; o.qty=+o.qty.toFixed(2); return o; });
+ // Cuadre exacto: si TODO emparejó, ajusta el redondeo para que el total del XML = total de la factura.
+ if(factDecl>0 && !faltan.length && out.length){
+   const sum=out.reduce((s,x)=>s+x.total,0); const d=Math.round(factDecl)-sum;
+   if(d!==0 && Math.abs(d)<=out.length+10){ let big=out[0]; out.forEach(o=>{ if(o.total>big.total)big=o; }); big.total+=d; }
+ }
  return {items:out,faltan};
 }
 function tEsc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
