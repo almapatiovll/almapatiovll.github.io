@@ -6,7 +6,7 @@
 <title>Alma Patio — Producciones</title>
 <script>
 /* Auto-actualizador: si el servidor tiene una version mas nueva, recarga sin caché (una sola vez por sesión). */
-(function(){var V='2026-11-23h';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
+(function(){var V='2026-11-23i';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -594,7 +594,7 @@ async function refresh(){
 }
 function setConn(ok){const c=$("conn");c.innerHTML=`<span class="dot ${ok?'ok':'bad'}"></span>${ok?'conectado':'sin conexión'}`;}
 
-function startApp(){ if(window.__started)return; window.__started=true; wire(); refresh(); setInterval(refresh,30000); }
+function startApp(){ if(window.__started)return; window.__started=true; wire(); cargarMaestro().then(refresh,refresh); setInterval(refresh,30000); }
 
 function wire(){
   $("btnPick").onclick=()=>$("file").click();
@@ -1050,7 +1050,31 @@ const uDiv=u=>{u=(u||'').toLowerCase();return (u==='g'||u==='gr'||u==='grs'||u==
 let ALIAS={};
 let FACTPX={}; // precios reales de factura: norm(insumo resuelto) -> {c,b,fecha}
 let COSTIDX=null;
+// === Maestro dinámico (insumo_maestro): catálogo único que alimenta recetas, inventario y costos ===
+const MREST=SB_URL+"/rest/v1/insumo_maestro";
+let MAEI={};      // norm(nombre o sinónimo) -> {n,c,b}  (costo canónico del maestro)
+let MAE_ROWS=[];
+async function cargarMaestro(){
+  try{ const r=await fetch(MREST+"?select=nombre,unidad,costo,sinonimos,activo&activo=eq.true",{headers:HDRS}); MAE_ROWS=r.ok?await r.json():[]; }
+  catch(e){ MAE_ROWS=[]; return; }
+  MAEI={};
+  MAE_ROWS.forEach(row=>{
+    const nm=String(row.nombre||'').trim(); if(!nm)return;
+    let b=uBaseNorm(row.unidad||''); if(!(b==='kg'||b==='l'||b==='un'||b==='g'||b==='ml')) b='un';
+    const cc=(row.costo!=null)?Number(row.costo):null;
+    const hasC=(cc!=null&&isFinite(cc)&&cc>0);
+    const o={n:nm.toUpperCase(),c:hasC?cc:0,b:b};
+    const key=norm(nm);
+    // Solo indexa costo si hay costo real (si no, deja que siga marcando "falta precio")
+    if(hasC){ if(!(key in MAEI))MAEI[key]=o; (Array.isArray(row.sinonimos)?row.sinonimos:[]).forEach(s=>{ const ks=norm(s); if(ks && !(ks in MAEI)) MAEI[ks]=o; }); }
+    // Alimenta el selector de recetas/inventario con el nombre canónico (de-dup por nombre), con o sin costo
+    try{ if(key && typeof INGSMAP!=='undefined' && !INGSMAP[key]){ const ig={n:nm.toUpperCase(),c:o.c,b:o.b}; INGS.push(ig); INGSMAP[key]=ig; } }catch(e){}
+  });
+  COSTIDX=null;                 // fuerza rebuild del índice de costos incluyendo el maestro
+  try{ llenarInsumosList(); }catch(e){}
+}
 function costIdx(){ if(COSTIDX)return COSTIDX; COSTIDX={}; try{
+  Object.keys(MAEI).forEach(k=>{ if(k)COSTIDX[k]=MAEI[k]; });            // maestro (base, rellena vacíos)
   Object.values(TOTEAT).forEach(v=>{ const k=norm(v.n); if(k&&!(k in COSTIDX))COSTIDX[k]=v; });
   Object.values(COSTMAP).forEach(v=>{ const k=norm(v.n); if(k)COSTIDX[k]=v; }); // COSTMAP manda
 }catch(e){} return COSTIDX; }
@@ -2281,16 +2305,18 @@ async function descargarToteatFact(){
 }
 // === Insumo nuevo → carga masiva Toteat (Ingreso Masivo de Ingredientes) ===
 const TCATS=[
- {p:'ABA', jer:'IC.010', n:'Abarrotes'},
- {p:'CAR', jer:'IC.020', n:'Carnicos'},
- {p:'BEB', jer:'IC.030', n:'Licores'},
- {p:'POS', jer:'IC.030', n:'Postres'},
- {p:'FRV', jer:'IC.040', n:'Fruver'},
- {p:'LAC', jer:'IC.050', n:'Lacteos'},
- {p:'BEBS',jer:'IC.060', n:'Beb. sin alcohol'},
- {p:'ASEO',jer:'IC.070', n:'Aseo'},
+ {p:'ABA', jer:'IC.010', n:'Abarrotes', cat:'ABARROTES', area:'ALMACEN'},
+ {p:'CAR', jer:'IC.020', n:'Carnicos',  cat:'CARNICOS',  area:'ALMACEN'},
+ {p:'BEB', jer:'IC.030', n:'Licores',   cat:'LICORES',   area:'BAR'},
+ {p:'POS', jer:'IC.030', n:'Postres',   cat:'POSTRES',   area:'ALMACEN'},
+ {p:'FRV', jer:'IC.040', n:'Fruver',    cat:'FRUVER',    area:'ALMACEN'},
+ {p:'LAC', jer:'IC.050', n:'Lacteos',   cat:'LACTEOS',   area:'ALMACEN'},
+ {p:'BEBS',jer:'IC.060', n:'Beb. sin alcohol', cat:'BEBIDAS', area:'BAR'},
+ {p:'ASEO',jer:'IC.070', n:'Aseo',      cat:'ASEO',      area:'ALMACEN'},
 ];
 function jerDe(p){ const c=TCATS.find(x=>x.p===p); return c?c.jer:'IC.010'; }
+function catDe(p){ const c=TCATS.find(x=>x.p===p); return c?c:TCATS[0]; }
+function medAUnidad(m){ m=String(m||'').toLowerCase(); return m==='kg'?'KG':m==='l'?'LT':m==='un'?'UND':m==='g'?'GR':m==='ml'?'ML':m==='ptn'?'PORC':m==='bot'?'BOT':'UND'; }
 function nextCod(pref, used){
  let max=0; const re=new RegExp('^'+pref+'(\\d+)$');
  (TMAE||[]).forEach(m=>{ const mm=re.exec(m[0]); if(mm){ const n=+mm[1]; if(n>max)max=n; } });
@@ -2364,7 +2390,7 @@ function renderCM(){
  h+='</tbody></table></div>';
  h+='<p class="sub" style="margin:8px 0 4px">Filas listas para pegar (una por línea):</p>';
  h+='<textarea id="cmOut" readonly style="width:100%;height:84px;font-family:monospace;font-size:.8rem"></textarea>';
- h+='<div class="row" style="margin-top:8px;align-items:center"><button class="primary sm" id="cmCopy">📋 Copiar filas</button><button class="ghost sm" id="cmHide">Cerrar</button><span id="cmMsg" class="muted" style="font-size:.85rem"></span></div>';
+ h+='<div class="row" style="margin-top:8px;align-items:center;gap:8px;flex-wrap:wrap"><button class="primary sm" id="cmCopy">📋 Copiar para Toteat</button><button class="ghost sm" id="cmGuardar" title="Guarda los insumos marcados en el catálogo de la app para que aparezcan en recetas e inventario">➕ Guardar en la app (recetas/inventario)</button><button class="ghost sm" id="cmHide">Cerrar</button><span id="cmMsg" class="muted" style="font-size:.85rem"></span></div>';
  box.innerHTML=h;
  box.querySelectorAll('[data-cm]').forEach(el=>{
    const ev=(el.type==='checkbox'||el.tagName==='SELECT')?'onchange':'oninput';
@@ -2372,7 +2398,36 @@ function renderCM(){
  });
  const cp=document.getElementById('cmCopy'); if(cp)cp.onclick=()=>{ const t=document.getElementById('cmOut'); if(!t.value){const m=document.getElementById('cmMsg'); if(m)m.textContent='Marca al menos un insumo.'; return;} t.select(); try{document.execCommand('copy');}catch(e){} if(navigator.clipboard)navigator.clipboard.writeText(t.value); const m=document.getElementById('cmMsg'); if(m)m.textContent='✓ Copiado. Pégalo en Toteat.'; };
  const hd=document.getElementById('cmHide'); if(hd)hd.onclick=()=>{ box.style.display='none'; box.innerHTML=''; };
+ const gb=document.getElementById('cmGuardar'); if(gb)gb.onclick=guardarNuevosEnMaestro;
  cmRebuild();
+}
+async function guardarNuevosEnMaestro(){
+ const m=document.getElementById('cmMsg');
+ const nuev=CMNUEV.filter(r=>r.crear && String(r.nombre||'').trim());
+ if(!nuev.length){ if(m)m.textContent='Marca al menos un insumo.'; return; }
+ if(m)m.textContent='Guardando en el catálogo…';
+ const rows=nuev.map(r=>{ const c=catDe(r.pref); return {
+   codigo:r.cod||('APP-'+Date.now()+Math.floor(Math.random()*99)),
+   nombre:String(r.nombre).trim(),
+   nombre_norm:norm(r.nombre),
+   unidad:medAUnidad(r.med),
+   categoria:c.cat, area_princ:c.area, tipo:'insumo',
+   costo:Math.round(num(r.costo)||0)||null,
+   activo:true
+ };});
+ let ok=0, err=0;
+ for(const row of rows){
+   try{ const r=await fetch(MREST,{method:'POST',headers:Object.assign({},HDRS,{'Prefer':'return=minimal','Content-Type':'application/json'}),body:JSON.stringify(row)});
+     if(r.ok){ ok++;
+       // refleja en memoria para que aparezca YA en recetas/inventario sin recargar
+       const key=norm(row.nombre); let b=uBaseNorm(row.unidad); if(!(b==='kg'||b==='l'||b==='un'||b==='g'||b==='ml'))b='un';
+       const o={n:row.nombre.toUpperCase(),c:row.costo||0,b:b};
+       if(row.costo>0) MAEI[key]=o; try{ if(!INGSMAP[key]){ INGS.push(o); INGSMAP[key]=o; } }catch(e){}
+     } else err++;
+   }catch(e){ err++; }
+ }
+ COSTIDX=null; try{ llenarInsumosList(); }catch(e){} try{ COSTIDX=null; }catch(e){}
+ if(m)m.textContent='✓ Guardados en la app: '+ok+(err?(' · '+err+' con error (quizá ya existían)'):'')+'. Ya salen en crear receta e inventario.';
 }
 function cmRebuild(){
  const used=[];
