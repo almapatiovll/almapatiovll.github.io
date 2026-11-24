@@ -6,7 +6,7 @@
 <title>Alma Patio — Producciones</title>
 <script>
 /* Auto-actualizador: si el servidor tiene una version mas nueva, recarga sin caché (una sola vez por sesión). */
-(function(){var V='2026-11-23a';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
+(function(){var V='2026-11-23b';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2275,6 +2275,16 @@ function presBase(d){ d=String(d||'').toUpperCase(); let m;
  return {f:1, med:'UN'};
 }
 let CMNUEV=[];
+function cmMed(u){ u=tnorm(u);
+ if(/KG|KILO/.test(u))return 'kg';
+ if(/^GR|GRAMO/.test(u))return 'g';
+ if(/^L$|^LT|LITRO/.test(u))return 'L';
+ if(/ML|^CC/.test(u))return 'mL';
+ if(/PORC|PTN/.test(u))return 'PTN';
+ if(/BOT/.test(u))return 'BOT';
+ if(/UND|^UN|UNID/.test(u))return 'UN';
+ return '';
+}
 function cmMedidas(sel){ return ['kg','UN','L','g','mL','PTN','BOT'].map(x=>'<option'+(x===sel?' selected':'')+'>'+x+'</option>').join(''); }
 function cmCats(sel){ return TCATS.map(c=>'<option value="'+c.p+'"'+(c.p===sel?' selected':'')+'>'+c.p+' · '+c.n+'</option>').join(''); }
 async function cargaMasivaNuevos(){
@@ -2283,11 +2293,15 @@ async function cargaMasivaNuevos(){
  await tLoad();
  const prov=(document.getElementById('fProv')||{}).value||'';
  CMNUEV = (factRev||[]).filter(it=>String(it.producto||'').trim()).map(it=>{
-   const m=toteatMatch(it.producto,prov);
-   const pref=catGuess(it.producto); const pb=presBase(it.producto);
-   const precioUn=num(it.precio)||num(it.total)||0;
-   const costo=pb.f? Math.round(precioUn/pb.f): Math.round(precioUn);
-   return {nombre:String(it.producto).trim().toUpperCase(), pref, med:pb.med, costo, match:m, crear:!m};
+   const exact=(TMAP||{})[tnorm(it.producto)]||null;     // sólo coincidencia EXACTA de nombre = ya existe
+   const m=toteatMatch(it.producto,prov);                // match flexible = sólo para avisar "parecido a…"
+   const pref=catGuess(it.producto);
+   // Prefiere lo que ya está en la fila (unidad + precio/unidad). Si no, parsea el nombre.
+   const medU=cmMed(it.unidad); const precioUn=num(it.precio);
+   let med, costo;
+   if(medU && precioUn){ med=medU; costo=Math.round(precioUn); }
+   else { const pb=presBase(it.producto); med=pb.med; const p=precioUn||num(it.total)||0; costo=pb.f?Math.round(p/pb.f):Math.round(p); }
+   return {nombre:String(it.producto).trim().toUpperCase(), pref, med, costo, match:m, crear:!exact};
  });
  renderCM();
 }
