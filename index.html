@@ -6,7 +6,7 @@
 <title>Alma Patio — Producciones</title>
 <script>
 /* Auto-actualizador: si el servidor tiene una version mas nueva, recarga sin caché (una sola vez por sesión). */
-(function(){var V='2026-11-23g';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
+(function(){var V='2026-11-23h';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1681,12 +1681,12 @@ function reporteCorte(c){
   const areas={}; items.forEach(it=>{ (areas[it.area||'—']=areas[it.area||'—']||[]).push(it); });
   const TOT=items.reduce((s,x)=>s+(Number(x.valor)||0),0) || (Number(c.total)||0);
   const pct=v=>TOT?((v/TOT*100).toFixed(1)+'%'):'—';
-  // Resumen por area (ordenado por valor desc)
+  // Resumen por area (ordenado por valor desc) — esto es lo que ven los contadores
   const resumen=Object.keys(areas).map(a=>({a,n:areas[a].length,v:areas[a].reduce((s,x)=>s+(Number(x.valor)||0),0)})).sort((x,y)=>y.v-x.v);
   let sumTbl='<table><thead><tr><th>Área</th><th class="n">Productos</th><th class="n">Valor</th><th class="n">% del total</th></tr></thead><tbody>';
   resumen.forEach(r=>{ sumTbl+='<tr><td>'+esc(r.a)+'</td><td class="n">'+r.n+'</td><td class="n">$'+fmtN(Math.round(r.v))+'</td><td class="n">'+pct(r.v)+'</td></tr>'; });
   sumTbl+='<tr class="grand"><td>TOTAL</td><td class="n">'+items.length+'</td><td class="n">$'+fmtN(Math.round(TOT))+'</td><td class="n">100%</td></tr></tbody></table>';
-  // Detalle por area (mismo orden que el resumen: mayor valor primero)
+  // Detalle completo (oculto por defecto; se despliega con un boton, no se imprime si esta oculto)
   let body='';
   resumen.forEach(r=>{
     const list=areas[r.a].slice().sort((x,y)=>(Number(y.valor)||0)-(Number(x.valor)||0));
@@ -1695,14 +1695,14 @@ function reporteCorte(c){
   });
   body+='<tr class="grand"><td colspan="4">TOTAL INVENTARIO</td><td class="n">$'+fmtN(Math.round(TOT))+'</td></tr>';
   const html='<!doctype html><html><head><meta charset="utf-8"><title>'+esc(c.etiqueta||('Corte '+c.fecha))+'</title>'
-   +'<style>body{font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;margin:26px;font-size:12px}h1{font-size:18px;margin:0}h2{font-size:12px;font-weight:400;color:#555;margin:2px 0}h3{font-size:13px;margin:18px 0 4px;color:#c9541f}table{width:100%;border-collapse:collapse;margin-top:6px}th,td{padding:5px 8px;border-bottom:1px solid #ddd;text-align:left}th{background:#f3f3f3;font-size:11px}.n{text-align:right}tr.area td{background:#efe6dc;font-weight:700;padding-top:9px}tr.grand td{background:#2a160b;color:#fff;font-weight:700;font-size:12.5px}.tot{font-size:16px;font-weight:700;margin:14px 0 2px}.hdr{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #c9541f;padding-bottom:8px;margin-bottom:10px}@media print{.noprint{display:none}tr.area td,tr.grand td,th{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body>'
+   +'<style>body{font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;margin:26px;font-size:12px}h1{font-size:18px;margin:0}h2{font-size:12px;font-weight:400;color:#555;margin:2px 0}h3{font-size:13px;margin:18px 0 4px;color:#c9541f}table{width:100%;border-collapse:collapse;margin-top:6px}th,td{padding:6px 8px;border-bottom:1px solid #ddd;text-align:left}th{background:#f3f3f3;font-size:11px}.n{text-align:right}tr.area td{background:#efe6dc;font-weight:700;padding-top:9px}tr.grand td{background:#2a160b;color:#fff;font-weight:700;font-size:12.5px}.tot{font-size:16px;font-weight:700;margin:14px 0 2px}.hdr{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #c9541f;padding-bottom:8px;margin-bottom:10px}@media print{.noprint{display:none}tr.area td,tr.grand td,th{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body>'
    +'<div class="hdr"><div><h1>El Patio · Villa de Leyva</h1><h2>Inventario valorizado para contabilidad</h2></div><div style="text-align:right"><div><b>'+esc(c.etiqueta||'')+'</b></div><div>Fecha de corte: '+esc(c.fecha||'')+'</div></div></div>'
-   +'<div class="tot">Total inventario: $'+fmtN(Math.round(TOT))+'</div><div style="color:#666;font-size:11px">'+items.length+' productos con existencia · '+resumen.length+' áreas</div>'
-   +'<h3>Resumen por área</h3>'+sumTbl
-   +'<h3>Detalle por área</h3>'
-   +'<table><thead><tr><th>Producto</th><th class="n">Cantidad</th><th>Unidad</th><th class="n">Costo unit.</th><th class="n">Valor</th></tr></thead><tbody>'+body+'</tbody></table>'
+   +'<div class="tot">Total inventario: $'+fmtN(Math.round(TOT))+'</div><div style="color:#666;font-size:11px">'+resumen.length+' áreas · '+items.length+' productos</div>'
+   +'<h3>Valor por área</h3>'+sumTbl
+   +'<div class="noprint" style="margin-top:14px"><button onclick="window.print()" style="padding:10px 16px;font-size:13px;background:#c9541f;color:#fff;border:none;border-radius:8px;cursor:pointer">🖨 Imprimir / Guardar como PDF</button> <button onclick="var d=document.getElementById(\'det\');var on=d.style.display==\'none\';d.style.display=on?\'block\':\'none\';this.textContent=on?\'Ocultar detalle\':\'Ver detalle completo (todos los productos)\'" style="padding:10px 16px;font-size:13px;background:#eee;color:#333;border:1px solid #ccc;border-radius:8px;cursor:pointer">Ver detalle completo (todos los productos)</button></div>'
+   +'<div id="det" style="display:none"><h3>Detalle por área</h3>'
+   +'<table><thead><tr><th>Producto</th><th class="n">Cantidad</th><th>Unidad</th><th class="n">Costo unit.</th><th class="n">Valor</th></tr></thead><tbody>'+body+'</tbody></table></div>'
    +'<p style="margin-top:16px;color:#888;font-size:10px">Generado por Alma Patio · '+new Date().toLocaleString('es-CO')+'</p>'
-   +'<button class="noprint" onclick="window.print()" style="margin-top:12px;padding:10px 16px;font-size:13px;background:#c9541f;color:#fff;border:none;border-radius:8px;cursor:pointer">🖨 Imprimir / Guardar como PDF</button>'
    +'</body></html>';
   const w=window.open('','_blank'); if(!w){ alert('Permite las ventanas emergentes para ver el reporte.'); return; }
   w.document.write(html); w.document.close();
