@@ -493,11 +493,13 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
       <div class="row" style="margin-top:12px">
         <button class="ghost sm" id="btnAddFactItem">+ Producto</button>
         <button class="ghost sm" id="btnToteatFact" title="Genera el XML con los nombres y códigos de Toteat para que las chicas lo suban al botón XML de Toteat">⬇ Descargar para Toteat</button>
+        <button class="ghost sm" id="btnCargaMasiva" title="Detecta insumos nuevos de esta factura y arma el código, precio y medida listos para pegar en Toteat › Ingredientes › Ingreso Masivo">🆕 Insumos nuevos → Toteat</button>
         <label class="row" style="gap:6px;align-items:center;font-size:.85rem"><input type="checkbox" id="fActualizaPrecios" checked> Actualizar precios de insumos</label>
         <button class="ghost sm right" id="btnCancelFact">✕ Cancelar</button>
         <button class="primary" id="btnGuardarFact">Guardar factura</button>
       </div>
       <div id="factGuardMsg" class="muted" style="font-size:.85rem;margin-top:8px"></div>
+      <div id="cargaMasivaBox" style="display:none;margin-top:12px"></div>
     </section>
 
     <section class="card" id="secFactList">
@@ -2237,6 +2239,98 @@ async function descargarToteatFact(){
  if(faltan.length) msg+=' ⚠ Sin emparejar: '+faltan.slice(0,6).join(', ')+(faltan.length>6?'…':'')+' (añádelos a mano en Toteat).';
  if(el)el.textContent=msg;
 }
+// === Insumo nuevo → carga masiva Toteat (Ingreso Masivo de Ingredientes) ===
+const TCATS=[
+ {p:'ABA', jer:'IC.010', n:'Abarrotes'},
+ {p:'CAR', jer:'IC.020', n:'Carnicos'},
+ {p:'BEB', jer:'IC.030', n:'Licores'},
+ {p:'POS', jer:'IC.030', n:'Postres'},
+ {p:'FRV', jer:'IC.040', n:'Fruver'},
+ {p:'LAC', jer:'IC.050', n:'Lacteos'},
+ {p:'BEBS',jer:'IC.060', n:'Beb. sin alcohol'},
+ {p:'ASEO',jer:'IC.070', n:'Aseo'},
+];
+function jerDe(p){ const c=TCATS.find(x=>x.p===p); return c?c.jer:'IC.010'; }
+function nextCod(pref, used){
+ let max=0; const re=new RegExp('^'+pref+'(\\d+)$');
+ (TMAE||[]).forEach(m=>{ const mm=re.exec(m[0]); if(mm){ const n=+mm[1]; if(n>max)max=n; } });
+ (used||[]).forEach(c=>{ const mm=re.exec(c); if(mm){ const n=+mm[1]; if(n>max)max=n; } });
+ return pref+String(max+1).padStart(3,'0');
+}
+function catGuess(d){ d=tnorm(d);
+ if(/AGUARDIENT|AGUARDI|\bRON\b|WHISK|VODKA|TEQUILA|GINEBRA|CERVEZ|\bVINO|LICOR|APERITIV|VERMUT|BRANDY|MEZCAL|GASEOS.*ALCOHOL/.test(d))return 'BEB';
+ if(/POSTRE|CHEESECAKE|CHEES CAKE|BROWNIE|\bTORTA|\bHELADO/.test(d))return 'POS';
+ if(/CARNE|POLLO|CERDO|\bRES\b|COSTILL|\bLOMO|PECHUG|CHORIZO|TOCIN|PANCET|JAMON|SALMON|MOJARR|FILETE|LONGANIZ|CHICHARR|CHULET/.test(d))return 'CAR';
+ if(/\bLECHE|QUESO|\bCREMA|YOGUR|MANTEQUILL|MOZZARELL|MOZARELL|PARMESAN|MASCARPON|BUFALA|CUAJAD/.test(d))return 'LAC';
+ if(/GASEOS|\bSODA|\bAGUA\b|\bJUGO|\bZUMO|REFRESC|\bHIT\b|TONIC|HATSU|SPEED|ENERGIZ/.test(d))return 'BEBS';
+ if(/JABON|DETERGENT|\bCLORO|LIMPID|ESCOB|GUANTE|SERVILLET|\bBOLSA|\bASEO|DESINFECT|TRAPE|PAPEL HIG|VARSOL|LIMPIAVIDR/.test(d))return 'ASEO';
+ if(/TOMATE|CEBOLL|\bLIMON|NARANJA|\bMANGO|FRESA|PI[NÑ]A|\bPAPA|AGUACAT|LECHUG|BANANO|PLATANO|ZANAHOR|MANZANA|UCHUV|\bMORA|\bLULO|MARACUY|\bAJO\b|CILANTR|\bAPIO|FRUTA|VERDUR|PEREJIL|ESPINAC|PIMENTON|BROCOLI|PEPINO|ZUQUINI|ZUCCHIN|MARACUYA/.test(d))return 'FRV';
+ return 'ABA';
+}
+function presBase(d){ d=String(d||'').toUpperCase(); let m;
+ if(m=d.match(/(\d+(?:[.,]\d+)?)\s*(?:KG|KILO)/)) return {f:parseFloat(m[1].replace(',','.')), med:'kg'};
+ if(m=d.match(/(\d+(?:[.,]\d+)?)\s*(?:GRS?|GRAMOS?|\bG)\b/)) return {f:parseFloat(m[1].replace(',','.'))/1000, med:'kg'};
+ if(m=d.match(/(\d+(?:[.,]\d+)?)\s*(?:LTS?|LITROS?|\bL)\b/)) return {f:parseFloat(m[1].replace(',','.')), med:'L'};
+ if(m=d.match(/(\d+(?:[.,]\d+)?)\s*(?:ML|CC)\b/)) return {f:parseFloat(m[1].replace(',','.'))/1000, med:'L'};
+ return {f:1, med:'UN'};
+}
+let CMNUEV=[];
+function cmMedidas(sel){ return ['kg','UN','L','g','mL','PTN','BOT'].map(x=>'<option'+(x===sel?' selected':'')+'>'+x+'</option>').join(''); }
+function cmCats(sel){ return TCATS.map(c=>'<option value="'+c.p+'"'+(c.p===sel?' selected':'')+'>'+c.p+' · '+c.n+'</option>').join(''); }
+async function cargaMasivaNuevos(){
+ const box=document.getElementById('cargaMasivaBox'); if(!box)return;
+ box.style.display='block'; box.innerHTML='<p class="muted" style="font-size:.85rem">Buscando insumos nuevos…</p>';
+ await tLoad();
+ const prov=(document.getElementById('fProv')||{}).value||'';
+ CMNUEV = (factRev||[]).filter(it=>String(it.producto||'').trim()).map(it=>{
+   const m=toteatMatch(it.producto,prov);
+   const pref=catGuess(it.producto); const pb=presBase(it.producto);
+   const precioUn=num(it.precio)||num(it.total)||0;
+   const costo=pb.f? Math.round(precioUn/pb.f): Math.round(precioUn);
+   return {nombre:String(it.producto).trim().toUpperCase(), pref, med:pb.med, costo, match:m, crear:!m};
+ });
+ renderCM();
+}
+function renderCM(){
+ const box=document.getElementById('cargaMasivaBox'); if(!box)return;
+ if(!CMNUEV.length){ box.innerHTML='<p class="muted" style="font-size:.85rem">No hay productos en la factura.</p>'; return; }
+ let h='<p class="sub" style="margin:0 0 8px">Marca ✓ lo que quieras <b>crear como insumo nuevo</b> en Toteat. Las filas en gris ya existen en el maestro (déjalas sin marcar, o márcalas si quieres darles código propio). Revisa categoría, costo y medida; luego copia y pega en <b>Toteat › Ingredientes › Ingreso Masivo</b>.</p>';
+ h+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Nuevo</th><th>Código</th><th>Nombre</th><th>Categoría</th><th>Costo base</th><th>Medida</th><th>En Toteat</th></tr></thead><tbody>';
+ CMNUEV.forEach((r,i)=>{
+   h+='<tr style="'+(r.crear?'':'opacity:.6')+'">'
+   +'<td style="text-align:center"><input type="checkbox" data-cm="crear" data-i="'+i+'"'+(r.crear?' checked':'')+'></td>'
+   +'<td class="cmcod" style="white-space:nowrap;font-family:monospace">'+(r.crear?(r.cod||''):'—')+'</td>'
+   +'<td><input data-cm="nombre" data-i="'+i+'" value="'+r.nombre.replace(/"/g,'&quot;')+'" style="min-width:150px"></td>'
+   +'<td><select data-cm="pref" data-i="'+i+'">'+cmCats(r.pref)+'</select></td>'
+   +'<td><input data-cm="costo" data-i="'+i+'" type="text" inputmode="decimal" value="'+r.costo+'" style="width:84px;text-align:right"></td>'
+   +'<td><select data-cm="med" data-i="'+i+'">'+cmMedidas(r.med)+'</select></td>'
+   +'<td class="sub" style="font-size:.78rem;white-space:nowrap">'+(r.match?('≈ '+r.match[0]+' '+r.match[1]):'—')+'</td>'
+   +'</tr>';
+ });
+ h+='</tbody></table></div>';
+ h+='<p class="sub" style="margin:8px 0 4px">Filas listas para pegar (una por línea):</p>';
+ h+='<textarea id="cmOut" readonly style="width:100%;height:84px;font-family:monospace;font-size:.8rem"></textarea>';
+ h+='<div class="row" style="margin-top:8px;align-items:center"><button class="primary sm" id="cmCopy">📋 Copiar filas</button><button class="ghost sm" id="cmHide">Cerrar</button><span id="cmMsg" class="muted" style="font-size:.85rem"></span></div>';
+ box.innerHTML=h;
+ box.querySelectorAll('[data-cm]').forEach(el=>{
+   const ev=(el.type==='checkbox'||el.tagName==='SELECT')?'onchange':'oninput';
+   el[ev]=()=>{ const i=+el.dataset.i,k=el.dataset.cm; CMNUEV[i][k]=(el.type==='checkbox')?el.checked:el.value; if(k==='pref'||k==='crear')cmRebuild(); else cmText(); };
+ });
+ const cp=document.getElementById('cmCopy'); if(cp)cp.onclick=()=>{ const t=document.getElementById('cmOut'); if(!t.value){const m=document.getElementById('cmMsg'); if(m)m.textContent='Marca al menos un insumo.'; return;} t.select(); try{document.execCommand('copy');}catch(e){} if(navigator.clipboard)navigator.clipboard.writeText(t.value); const m=document.getElementById('cmMsg'); if(m)m.textContent='✓ Copiado. Pégalo en Toteat.'; };
+ const hd=document.getElementById('cmHide'); if(hd)hd.onclick=()=>{ box.style.display='none'; box.innerHTML=''; };
+ cmRebuild();
+}
+function cmRebuild(){
+ const used=[];
+ CMNUEV.forEach(r=>{ if(r.crear){ r.cod=nextCod(r.pref, used); used.push(r.cod); } else r.cod=''; });
+ const box=document.getElementById('cargaMasivaBox');
+ if(box){ box.querySelectorAll('tbody tr').forEach((tr,i)=>{ const r=CMNUEV[i]; if(!r)return; tr.style.opacity=r.crear?'':'.6'; const c=tr.querySelector('.cmcod'); if(c)c.textContent=r.crear?(r.cod||''):'—'; }); }
+ cmText();
+}
+function cmText(){
+ const t=document.getElementById('cmOut'); if(!t)return;
+ t.value=CMNUEV.filter(r=>r.crear).map(r=> [r.cod, r.nombre, '', Math.round(num(r.costo)||0), '1', jerDe(r.pref), r.med].join('\t')).join('\n');
+}
 async function guardarFactura(){
   const msg=document.getElementById('factGuardMsg');
   const prov=document.getElementById('fProv').value.trim();
@@ -2394,6 +2488,7 @@ async function borrarFactura(id){
   if(g('btnQuitaFact'))g('btnQuitaFact').onclick=()=>{pendingFact=null;g('fileFact').value='';g('previewFact').hidden=true;g('factMsg').textContent='';};
   if(g('btnCancelFact'))g('btnCancelFact').onclick=cancelarFactura;
   if(g('btnToteatFact'))g('btnToteatFact').onclick=descargarToteatFact;
+  if(g('btnCargaMasiva'))g('btnCargaMasiva').onclick=cargaMasivaNuevos;
   if(g('btnLeerFact'))g('btnLeerFact').onclick=leerFactura;
   if(g('btnManualFact'))g('btnManualFact').onclick=facturaManual;
   if(g('btnAddFactItem'))g('btnAddFactItem').onclick=()=>{factRev.push({producto:'',cantidad:'',unidad:'',precio:'',total:''});renderFactItems();};
