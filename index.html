@@ -6,7 +6,7 @@
 <title>Alma Patio — Producciones</title>
 <script>
 /* Auto-actualizador: si el servidor tiene una version mas nueva, recarga sin caché (una sola vez por sesión). */
-(function(){var V='2026-11-23b';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
+(function(){var V='2026-11-23c';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2482,11 +2482,13 @@ function renderFacturas(){
     const rows=items.map(it=>'<tr><td>'+(it.producto||'')+'</td><td class="num">'+fmtN(it.cantidad,2)+'</td><td>'+(it.unidad||'')+'</td><td class="num">'+(it.precioUnit!=null?'$'+fmtN(it.precioUnit):'')+'</td><td class="num">'+(it.porciones!=null?fmtN(it.porciones):'')+'</td><td class="num">'+(it.precioUso!=null?('$'+fmtN(it.precioUso)+'/'+(it.unidadUso||'und')):'')+'</td><td class="num">'+(it.total!=null?'$'+fmtN(it.total):'')+'</td></tr>').join('');
     const card=document.createElement('div'); card.className='recipe';
     const badge=(f.tipo_doc==='remision')?' <span class="chip-badge" style="background:var(--warn-bg);color:var(--warn-ink)">remisión</span>':'';
-    card.innerHTML='<div class="rhead"><span class="caret">▸</span><div><div class="rname">'+(f.proveedor||'—')+badge+'</div><div class="rmeta">'+(f.fecha||'')+(f.numero?(' · N° '+f.numero):'')+' · '+items.length+' productos</div></div><div class="cost">$'+fmtN(f.total)+'</div><button class="ghost sm btnEditFact" data-ef="'+f.id+'" style="margin-left:8px;align-self:center;white-space:nowrap">✏ Editar</button><button class="ghost sm btnDelFact" data-delf="'+f.id+'" style="margin-left:4px;align-self:center">✕</button></div>'
+    card.innerHTML='<div class="rhead"><span class="caret">▸</span><div><div class="rname">'+(f.proveedor||'—')+badge+'</div><div class="rmeta">'+(f.fecha||'')+(f.numero?(' · N° '+f.numero):'')+' · '+items.length+' productos</div></div><div class="cost">$'+fmtN(f.total)+'</div><button class="ghost sm btnToteatSaved" data-tot="'+f.id+'" title="Descargar el XML de esta factura para subirlo a Toteat" style="margin-left:8px;align-self:center;white-space:nowrap">⬇ Toteat</button><button class="ghost sm btnNuevSaved" data-nuev="'+f.id+'" title="Insumos nuevos de esta factura para Ingreso Masivo de Toteat" style="margin-left:4px;align-self:center;white-space:nowrap">🆕 Nuevos</button><button class="ghost sm btnEditFact" data-ef="'+f.id+'" style="margin-left:4px;align-self:center;white-space:nowrap">✏ Editar</button><button class="ghost sm btnDelFact" data-delf="'+f.id+'" style="margin-left:4px;align-self:center">✕</button></div>'
       +'<div class="rbody"><div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>Producto</th><th class="num">Cant.</th><th>Un.</th><th class="num">Precio</th><th class="num">Unidades</th><th class="num">$ / unidad</th><th class="num">Total</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7" class="empty">Sin detalle</td></tr>')+'</tbody></table></div></div>';
     card.querySelector('.rhead').addEventListener('click',(e)=>{ if(e.target.closest('[data-delf]')||e.target.closest('[data-ef]'))return; card.classList.toggle('open'); });
     const eb=card.querySelector('[data-ef]'); if(eb)eb.addEventListener('click',(e)=>{e.stopPropagation();editarFactura(f.id);});
     const db=card.querySelector('[data-delf]'); if(db)db.addEventListener('click',(e)=>{e.stopPropagation();borrarFactura(f.id);});
+    const tb=card.querySelector('[data-tot]'); if(tb)tb.addEventListener('click',(e)=>{e.stopPropagation();editarFactura(f.id);descargarToteatFact();});
+    const nb=card.querySelector('[data-nuev]'); if(nb)nb.addEventListener('click',(e)=>{e.stopPropagation();editarFactura(f.id);cargaMasivaNuevos();});
     el.appendChild(card);
   });
 }
