@@ -6,7 +6,7 @@
 <title>Alma Patio — Producciones</title>
 <script>
 /* Auto-actualizador: si el servidor tiene una version mas nueva, recarga sin caché (una sola vez por sesión). */
-(function(){var V='2026-11-23e';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
+(function(){var V='2026-11-23f';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -444,6 +444,10 @@ tfoot th{background:var(--soft);color:var(--ink);position:static}
         <label class="field" style="width:auto">Inventario inicial<select id="jIni" style="min-width:200px"></select></label>
         <label class="field" style="width:auto">Inventario final<select id="jFin" style="min-width:200px"></select></label>
         <button class="ghost sm" id="btnRefJuego">↻</button>
+      </div>
+      <div class="row" style="margin:0 0 10px;align-items:flex-end;flex-wrap:wrap;gap:8px">
+        <label class="field" style="width:auto">Reporte para contadores<select id="jRep" style="min-width:200px"></select></label>
+        <button class="ghost sm" id="btnRepCorte">📄 Reporte (PDF)</button>
       </div>
       <div id="juegoBody"><div class="empty">Guarda al menos dos cortes para armar el juego.</div></div>
     </section>
@@ -1658,6 +1662,7 @@ async function guardarCorte(){
     if(!r.ok) throw 0;
     await cargarCortes(); renderJuegoSelectores();
     alert('✓ Corte guardado: '+etiqueta+' — $'+fmtN(snap.total));
+    if(confirm('¿Abrir el reporte para los contadores (para imprimir o guardar como PDF)?')) reporteCorte({fecha:fecha.trim(),etiqueta,total:snap.total,por_area:snap.por_area,items:snap.items});
     if(confirm('El corte quedó guardado en el historial.\n\n¿Dejar el conteo EN BLANCO para empezar el siguiente? (el historial se conserva)')) await blanquearConteo();
   }catch(e){ alert('Error al guardar el corte'); }
 }
@@ -1669,7 +1674,31 @@ async function cargarJuego(){
   await cargarCortes(); renderJuegoSelectores();
 }
 function optCorte(c){ return '<option value="'+c.id+'">'+escH(c.etiqueta||('Corte '+c.fecha))+' — '+(c.fecha||'')+' ($'+fmtN(c.total||0)+')</option>'; }
+function reporteCorte(c){
+  if(!c){ alert('No hay corte para el reporte.'); return; }
+  const esc=s=>String(s==null?'':s).replace(/[&<>]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[ch]));
+  const items=(c.items||[]).filter(it=>(Number(it.valor)>0)||(Number(it.cantidad)>0));
+  const areas={}; items.forEach(it=>{ (areas[it.area||'—']=areas[it.area||'—']||[]).push(it); });
+  let body='';
+  Object.keys(areas).sort().forEach(a=>{
+    const list=areas[a].slice().sort((x,y)=>(Number(y.valor)||0)-(Number(x.valor)||0));
+    const sub=list.reduce((s,x)=>s+(Number(x.valor)||0),0);
+    body+='<tr class="area"><td colspan="4">'+esc(a)+'</td><td class="n">$'+fmtN(Math.round(sub))+'</td></tr>';
+    list.forEach(it=>{ body+='<tr><td>'+esc(it.nombre)+'</td><td class="n">'+fmtN(it.cantidad,2)+'</td><td>'+esc(it.unidad||'')+'</td><td class="n">'+(it.costo!=null?'$'+fmtN(it.costo):'')+'</td><td class="n">$'+fmtN(Math.round(Number(it.valor)||0))+'</td></tr>'; });
+  });
+  const html='<!doctype html><html><head><meta charset="utf-8"><title>'+esc(c.etiqueta||('Corte '+c.fecha))+'</title>'
+   +'<style>body{font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;margin:26px;font-size:12px}h1{font-size:18px;margin:0}h2{font-size:12px;font-weight:400;color:#555;margin:2px 0}table{width:100%;border-collapse:collapse;margin-top:6px}th,td{padding:5px 8px;border-bottom:1px solid #ddd;text-align:left}th{background:#f3f3f3;font-size:11px}.n{text-align:right}tr.area td{background:#efe6dc;font-weight:700;padding-top:9px}.tot{font-size:16px;font-weight:700;margin:14px 0 2px}.hdr{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #c9541f;padding-bottom:8px;margin-bottom:10px}@media print{.noprint{display:none}}</style></head><body>'
+   +'<div class="hdr"><div><h1>El Patio · Villa de Leyva</h1><h2>Inventario valorizado para contabilidad</h2></div><div style="text-align:right"><div><b>'+esc(c.etiqueta||'')+'</b></div><div>Fecha de corte: '+esc(c.fecha||'')+'</div></div></div>'
+   +'<div class="tot">Total inventario: $'+fmtN(c.total||0)+'</div><div style="color:#666;font-size:11px">'+items.length+' productos con existencia</div>'
+   +'<table><thead><tr><th>Producto</th><th class="n">Cantidad</th><th>Unidad</th><th class="n">Costo unit.</th><th class="n">Valor</th></tr></thead><tbody>'+body+'</tbody></table>'
+   +'<p style="margin-top:16px;color:#888;font-size:10px">Generado por Alma Patio · '+new Date().toLocaleString('es-CO')+'</p>'
+   +'<button class="noprint" onclick="window.print()" style="margin-top:12px;padding:10px 16px;font-size:13px;background:#c9541f;color:#fff;border:none;border-radius:8px;cursor:pointer">🖨 Imprimir / Guardar como PDF</button>'
+   +'</body></html>';
+  const w=window.open('','_blank'); if(!w){ alert('Permite las ventanas emergentes para ver el reporte.'); return; }
+  w.document.write(html); w.document.close();
+}
 function renderJuegoSelectores(){
+  const rep=document.getElementById('jRep'); if(rep)rep.innerHTML=CORTES.map(optCorte).join('');
   const ini=document.getElementById('jIni'), fin=document.getElementById('jFin'); if(!ini||!fin) return;
   if(CORTES.length<2){
     document.getElementById('juegoBody').innerHTML='<div class="empty">Tienes '+CORTES.length+' corte'+(CORTES.length===1?'':'s')+'. Guarda al menos dos (📦 Conteo → 💾 Guardar corte) para armar el juego.</div>';
@@ -1738,6 +1767,7 @@ function excelJuego(){
   if(g('jFin'))g('jFin').addEventListener('change',renderJuego);
   if(g('btnRefJuego'))g('btnRefJuego').addEventListener('click',cargarJuego);
   if(g('btnExcelJuego'))g('btnExcelJuego').addEventListener('click',excelJuego);
+  if(g('btnRepCorte'))g('btnRepCorte').addEventListener('click',()=>{ const sel=g('jRep'); const c=CORTES.find(x=>String(x.id)===String(sel&&sel.value)); if(!c){ alert('Primero guarda un corte (📦 Conteo → 💾 Guardar corte).'); return; } reporteCorte(c); });
 })();
 /* ===== Comparar y trazar: insumo -> produccion -> inventario ===== */
 function prodStats(){
