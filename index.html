@@ -6,7 +6,7 @@
 <title>Alma Patio — Producciones</title>
 <script>
 /* Auto-actualizador: si el servidor tiene una version mas nueva, recarga sin caché (una sola vez por sesión). */
-(function(){var V='2026-11-23c';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
+(function(){var V='2026-11-23d';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2607,7 +2607,16 @@ async function conteoMode(areaRaw){
     +'<h1 style="text-align:center;margin:2px 0;font-size:1.5rem">Inventario</h1>'
     +'<div style="text-align:center;font-size:1.25rem;font-weight:800;color:#e8853a;margin-bottom:14px">'+esc(area)+'</div>'
     +'<label style="display:block;font-size:.85rem;margin-bottom:4px;color:#d9c7b8">Tu nombre</label>'
-    +'<input id="cqNom" placeholder="Quién cuenta" autocomplete="name" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1px solid #5a3a22;background:#1c120a;color:#f3e9df;font-size:1rem;margin-bottom:16px">'
+    +'<input id="cqNom" placeholder="Quién cuenta" autocomplete="name" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1px solid #5a3a22;background:#1c120a;color:#f3e9df;font-size:1rem;margin-bottom:12px">'
+    +'<div style="border:1px solid #5a3a22;border-radius:10px;background:#1c120a;margin-bottom:16px;overflow:hidden">'
+      +'<div id="cqConvHead" style="padding:10px 12px;cursor:pointer;font-weight:700;color:#e8a05a;display:flex;justify-content:space-between;align-items:center">🔢 Convertidor <span id="cqConvAr" style="font-size:.8rem;color:#b8988a">abrir ▾</span></div>'
+      +'<div id="cqConvBody" style="display:none;padding:0 12px 12px">'
+        +'<div style="font-size:.82rem;color:#d9c7b8;margin:2px 0 10px">Escribe lo que pesaste y te da el valor para anotar. Cuenta en la unidad que dice cada producto.</div>'
+        +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><input id="cvG" type="text" inputmode="decimal" placeholder="gramos" style="flex:1;min-width:0;padding:10px;text-align:right;border-radius:9px;border:1px solid #5a3a22;background:#140c07;color:#f3e9df;font-size:1rem"><span style="color:#b8988a">g =</span><b id="cvKg" style="min-width:70px;color:#7fd99a;font-size:1.05rem">0</b><span style="color:#b8988a">kg</span></div>'
+        +'<div style="display:flex;align-items:center;gap:8px"><input id="cvMl" type="text" inputmode="decimal" placeholder="mililitros" style="flex:1;min-width:0;padding:10px;text-align:right;border-radius:9px;border:1px solid #5a3a22;background:#140c07;color:#f3e9df;font-size:1rem"><span style="color:#b8988a">ml =</span><b id="cvL" style="min-width:70px;color:#7fd99a;font-size:1.05rem">0</b><span style="color:#b8988a">L</span></div>'
+        +'<div style="font-size:.78rem;color:#8a7a5a;margin-top:10px">Ej: 500 g = 0.5 kg · 1500 ml = 1.5 L · Usa punto para decimales.</div>'
+      +'</div>'
+    +'</div>'
     +'<div id="cqItems"><div style="text-align:center;padding:30px;color:#b8988a">Cargando productos…</div></div>'
     +'<button id="cqSave" style="position:fixed;left:16px;right:16px;bottom:14px;max-width:608px;margin:0 auto;display:block;padding:15px;border:none;border-radius:12px;background:linear-gradient(135deg,#e8853a,#c9541f);color:#fff;font-size:1.05rem;font-weight:800;box-shadow:0 6px 20px rgba(0,0,0,.45)">Guardar conteo</button>'
     +'<div id="cqMsg" style="position:fixed;left:0;right:0;bottom:72px;text-align:center;font-weight:700"></div></div>';
@@ -2615,10 +2624,26 @@ async function conteoMode(areaRaw){
   try{ const r=await fetch(IREST+"?select=*&area=eq."+encodeURIComponent(area)+"&order=nombre.asc",{headers:HDRS}); items=r.ok?await r.json():[]; }catch(e){}
   const box=document.getElementById('cqItems');
   if(!items.length){ box.innerHTML='<div style="text-align:center;padding:30px;color:#e8a">No hay productos en '+esc(area)+'. Avisa a administración.</div>'; return; }
-  box.innerHTML=items.map(it=>'<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #3a2416">'
+  box.innerHTML=items.map(it=>'<div style="padding:10px 0;border-bottom:1px solid #3a2416">'
+    +'<div style="display:flex;align-items:center;gap:10px">'
     +'<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:.98rem">'+esc(it.nombre)+(it.tipo==='preparacion'?' <span style="font-size:.7rem;color:#d9a066">receta</span>':'')+'</div></div>'
-    +'<input type="text" inputmode="decimal" autocomplete="off" data-id="'+it.id+'" value="'+(it.cantidad!=null?it.cantidad:'')+'" style="width:92px;padding:11px 8px;text-align:right;border-radius:9px;border:1px solid #5a3a22;background:#1c120a;color:#f3e9df;font-size:1.05rem">'
-    +'<span style="font-size:.8rem;color:#8a7a5a;min-width:30px">'+esc(it.unidad||'')+'</span></div>').join('');
+    +'<input type="text" inputmode="decimal" autocomplete="off" data-id="'+it.id+'" data-un="'+esc(it.unidad||'')+'" value="'+(it.cantidad!=null?it.cantidad:'')+'" style="width:92px;padding:11px 8px;text-align:right;border-radius:9px;border:1px solid #5a3a22;background:#1c120a;color:#f3e9df;font-size:1.05rem">'
+    +'<span style="font-size:.8rem;color:#8a7a5a;min-width:30px">'+esc(it.unidad||'')+'</span></div>'
+    +'<div class="cqWarn" style="display:none;font-size:.78rem;color:#ffb27a;margin-top:5px;text-align:right"></div></div>').join('');
+  // Aviso suave: número grande en insumo de kg/lt casi siempre son gramos/ml
+  box.querySelectorAll('input[data-id]').forEach(inp=>{
+    const un=(inp.getAttribute('data-un')||'').toUpperCase();
+    const w=inp.closest('div').parentNode.querySelector('.cqWarn');
+    const chk=()=>{ if(!w)return; const v=parseFloat((inp.value||'').replace(',','.'));
+      if((un==='KG'||un==='LT'||un==='L'||un==='LITRO') && v>=50){ w.textContent='⚠ '+v+' '+un+' es mucho. ¿Lo pesaste en gramos? Usa el convertidor ('+Math.round(v)+' g = '+(v/1000)+' kg).'; w.style.display='block'; }
+      else { w.style.display='none'; } };
+    inp.addEventListener('input',chk); chk();
+  });
+  (function(){ const h=document.getElementById('cqConvHead'),b=document.getElementById('cqConvBody'),ar=document.getElementById('cqConvAr');
+    if(h&&b)h.addEventListener('click',()=>{ const op=b.style.display==='none'; b.style.display=op?'block':'none'; if(ar)ar.textContent=op?'cerrar ▴':'abrir ▾'; });
+    const g=document.getElementById('cvG'),kg=document.getElementById('cvKg'); if(g&&kg)g.addEventListener('input',()=>{ const n=parseFloat((g.value||'').replace(',','.')); kg.textContent=isNaN(n)?'0':+(n/1000).toFixed(3); });
+    const ml=document.getElementById('cvMl'),l=document.getElementById('cvL'); if(ml&&l)ml.addEventListener('input',()=>{ const n=parseFloat((ml.value||'').replace(',','.')); l.textContent=isNaN(n)?'0':+(n/1000).toFixed(3); });
+  })();
   document.getElementById('cqSave').addEventListener('click',async()=>{
     const nom=document.getElementById('cqNom').value.trim(); const msg=document.getElementById('cqMsg');
     if(!nom){ msg.style.color='#ff9d8a'; msg.textContent='Escribe tu nombre primero'; document.getElementById('cqNom').focus(); window.scrollTo(0,0); return; }
