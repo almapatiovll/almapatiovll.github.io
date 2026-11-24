@@ -6,7 +6,7 @@
 <title>Alma Patio — Producciones</title>
 <script>
 /* Auto-actualizador: si el servidor tiene una version mas nueva, recarga sin caché (una sola vez por sesión). */
-(function(){var V='2026-11-23d';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
+(function(){var V='2026-11-23e';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2630,12 +2630,14 @@ async function conteoMode(areaRaw){
     +'<input type="text" inputmode="decimal" autocomplete="off" data-id="'+it.id+'" data-un="'+esc(it.unidad||'')+'" value="'+(it.cantidad!=null?it.cantidad:'')+'" style="width:92px;padding:11px 8px;text-align:right;border-radius:9px;border:1px solid #5a3a22;background:#1c120a;color:#f3e9df;font-size:1.05rem">'
     +'<span style="font-size:.8rem;color:#8a7a5a;min-width:30px">'+esc(it.unidad||'')+'</span></div>'
     +'<div class="cqWarn" style="display:none;font-size:.78rem;color:#ffb27a;margin-top:5px;text-align:right"></div></div>').join('');
-  // Aviso suave: número grande en insumo de kg/lt casi siempre son gramos/ml
+  // Aviso suave: número grande en insumo de kg/lt casi siempre son gramos/ml.
+  // Almacen/bar/parrilla reciben bultos y proteina (hasta ~150kg): umbral alto. Preparaciones: bajo.
+  const bulk=/ALMACEN|BAR|PARRILLA/.test(norm(area)); const lim=bulk?300:50;
   box.querySelectorAll('input[data-id]').forEach(inp=>{
     const un=(inp.getAttribute('data-un')||'').toUpperCase();
     const w=inp.closest('div').parentNode.querySelector('.cqWarn');
     const chk=()=>{ if(!w)return; const v=parseFloat((inp.value||'').replace(',','.'));
-      if((un==='KG'||un==='LT'||un==='L'||un==='LITRO') && v>=50){ w.textContent='⚠ '+v+' '+un+' es mucho. ¿Lo pesaste en gramos? Usa el convertidor ('+Math.round(v)+' g = '+(v/1000)+' kg).'; w.style.display='block'; }
+      if((un==='KG'||un==='LT'||un==='L'||un==='LITRO') && v>=lim){ w.textContent='⚠ '+v+' '+un+' es mucho. ¿Lo pesaste en gramos? Usa el convertidor ('+Math.round(v)+' g = '+(v/1000)+' kg).'; w.style.display='block'; }
       else { w.style.display='none'; } };
     inp.addEventListener('input',chk); chk();
   });
