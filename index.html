@@ -6,7 +6,7 @@
 <title>Alma Patio — Producciones</title>
 <script>
 /* Auto-actualizador: si el servidor tiene una version mas nueva, recarga sin caché (una sola vez por sesión). */
-(function(){var V='2026-11-23i';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
+(function(){var V='2026-11-27a';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -589,7 +589,7 @@ async function insertProd(rows){const r=await fetch(REST,{method:"POST",headers:
 async function delProd(id){const r=await fetch(REST+"?id=eq."+encodeURIComponent(id),{method:"DELETE",headers:HDRS});if(!r.ok)throw new Error("del "+r.status);}
 
 async function refresh(){
-  try{ saved=await listProd(); setConn(true); renderTable(); renderProdAvg(); try{renderRevisionProd();}catch(e){} try{ await cargarFactSiVacio(); renderPatacon(); }catch(e){} }
+  try{ saved=await listProd(); setConn(true); try{calcMerma();}catch(e){} renderTable(); renderProdAvg(); try{renderRevisionProd();}catch(e){} try{ await cargarFactSiVacio(); renderPatacon(); }catch(e){} }
   catch(e){ setConn(false); $("emptyRow").textContent="No se pudo conectar a los datos."; }
 }
 function setConn(ok){const c=$("conn");c.innerHTML=`<span class="dot ${ok?'ok':'bad'}"></span>${ok?'conectado':'sin conexión'}`;}
@@ -1078,6 +1078,25 @@ function costIdx(){ if(COSTIDX)return COSTIDX; COSTIDX={}; try{
   Object.values(TOTEAT).forEach(v=>{ const k=norm(v.n); if(k&&!(k in COSTIDX))COSTIDX[k]=v; });
   Object.values(COSTMAP).forEach(v=>{ const k=norm(v.n); if(k)COSTIDX[k]=v; }); // COSTMAP manda
 }catch(e){} return COSTIDX; }
+// === Motor de merma: costo usable = costo compra ÷ rendimiento medido en producción ===
+let MERMA={};   // norm(nombre/sinónimo del insumo) -> rendimiento (0..1); solo si <1 (hay merma)
+function calcMerma(){
+  MERMA={};
+  try{
+    const rend={}; // norm(preparacion) -> {s:suma, n:conteo}
+    (typeof saved!=='undefined'?saved:[]||[]).forEach(r=>{
+      const rr=Number(r.rendimiento);
+      if(r&&r.rendimiento!=null && isFinite(rr) && rr>0 && rr<1){ const k=norm(r.preparacion||''); if(!k)return; (rend[k]=rend[k]||{s:0,n:0}); rend[k].s+=rr; rend[k].n++; }
+    });
+    (MAE_ROWS||[]).forEach(row=>{
+      const nm=norm(row.nombre||''); if(!nm)return;
+      const cands=[nm].concat((Array.isArray(row.sinonimos)?row.sinonimos:[]).map(s=>norm(s)));
+      let hit=null;
+      for(const c of cands){ if(c && rend[c]){ hit=rend[c]; break; } }
+      if(hit){ const r=hit.s/hit.n; cands.forEach(c=>{ if(c) MERMA[c]=r; }); }
+    });
+  }catch(e){}
+}
 function uBaseNorm(u){ u=norm(u); if(/^(KG|KILO)/.test(u))return 'kg'; if(/^(LT|L|LITRO)/.test(u))return 'l'; if(/^(UN|UND|UNID|BOT)/.test(u))return 'un'; if(/^GR?/.test(u))return 'g'; if(/^ML/.test(u))return 'ml'; return u.toLowerCase(); }
 async function buildFactPx(){
   FACTPX={}; let rows=[];
@@ -1095,15 +1114,19 @@ async function buildFactPx(){
   });
 }
 function priceOf(key){
-  if(FACTPX[key]) return FACTPX[key]; // precio real de factura manda sobre el maestro
+  let m=null;
   const a=ALIAS[key];
-  if(a && a.conf && a.dest && FACTPX[a.dest]) return FACTPX[a.dest]; // factura del insumo emparejado
-  if(a && a.conf && a.dest && TOTEAT[a.dest]) return TOTEAT[a.dest]; // emparejamiento confirmado manda
-  if(COSTMAP[key]) return COSTMAP[key];
-  if(a && a.dest && TOTEAT[a.dest]) return TOTEAT[a.dest];
-  if(TOTEAT[key]) return TOTEAT[key];
-  const ci=costIdx(); if(ci[key]) return ci[key]; // empata por nombre real (arregla ñ y tildes de las llaves viejas)
-  return null;
+  if(FACTPX[key]) m=FACTPX[key];                                   // precio real de factura manda sobre el maestro
+  else if(a && a.conf && a.dest && FACTPX[a.dest]) m=FACTPX[a.dest];// factura del insumo emparejado
+  else if(a && a.conf && a.dest && TOTEAT[a.dest]) m=TOTEAT[a.dest];// emparejamiento confirmado manda
+  else if(COSTMAP[key]) m=COSTMAP[key];
+  else if(a && a.dest && TOTEAT[a.dest]) m=TOTEAT[a.dest];
+  else if(TOTEAT[key]) m=TOTEAT[key];
+  else { const ci=costIdx(); if(ci[key]) m=ci[key]; }              // empata por nombre real (ñ y tildes)
+  if(!m) return null;
+  const rd=MERMA[key];                                             // costo usable = compra ÷ rendimiento (sube por merma)
+  if(rd && rd>0 && rd<1) return {n:m.n, c:Math.round(m.c/rd), b:m.b, merma:rd};
+  return m;
 }
 let recCat='TODAS', prodCat='TODAS', recView='preparacion', recArea='TODAS';
 function esBarRec(r){ return /^(COC|SOD|VIN)-/.test(r.c) || ['COCTEL','SODA','VINO','BAR'].includes(String(r.categoria||'').toUpperCase()); }
