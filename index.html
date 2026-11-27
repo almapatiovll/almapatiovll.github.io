@@ -6,7 +6,7 @@
 <title>Alma Patio — Producciones</title>
 <script>
 /* Auto-actualizador: si el servidor tiene una version mas nueva, recarga sin caché (una sola vez por sesión). */
-(function(){var V='2026-11-27c';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
+(function(){var V='2026-11-27d';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -53,7 +53,8 @@ button.ghost{background:transparent}
 button.sm{padding:6px 10px;font-size:.82rem}
 button.danger{color:var(--bad-ink);border-color:var(--bad-bg)}
 label.field{display:flex;flex-direction:column;gap:3px;font-size:.72rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.3px}
-input,select{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 9px;width:100%;min-width:0}
+input,select{font:inherit;color:var(--ink);-webkit-text-fill-color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 9px;width:100%;min-width:0}
+input::placeholder{color:var(--muted);-webkit-text-fill-color:var(--muted);opacity:1}
 input:focus,select:focus{outline:2px solid var(--orange);outline-offset:1px}
 .banner{border-radius:10px;padding:10px 12px;font-size:.86rem}
 .banner.info{background:var(--chip);color:var(--muted)}
@@ -2127,7 +2128,7 @@ function renderFactItems(){
       +'<td class="num"><input type="number" step="any" value="'+(it.cantidad!=null?it.cantidad:'')+'" data-i="'+i+'" data-k="cantidad" style="width:64px;text-align:right"></td>'
       +'<td><input value="'+String(it.unidad||'').replace(/"/g,'&quot;')+'" data-i="'+i+'" data-k="unidad" style="width:56px" title="unidad de compra (kg, L, und...)"></td>'
       +'<td class="num"><input type="number" step="any" value="'+(it.precio!=null?it.precio:'')+'" data-i="'+i+'" data-k="precio" style="width:88px;text-align:right" title="precio por la unidad de compra"></td>'
-      +'<td class="num"><input type="number" step="any" placeholder="'+(_conv?'kg/L reales':'—')+'" value="'+(it.porc!=null?it.porc:'')+'" data-i="'+i+'" data-k="porc" style="width:66px;text-align:right'+(_falta?';background:#FFF4C2;border:1px solid #E8871E':'')+'" title="cuánto llegó en la unidad de USO (ej. 2 und de 907 g = 1,814 kg)"> <select data-i="'+i+'" data-k="usoUnidad" style="width:50px" title="unidad en que se usa/costea">'+['','UND','KG','LT'].map(u=>'<option value="'+u+'"'+(u===_uso?' selected':'')+'>'+(u||'—')+'</option>').join('')+'</select>'+(_falta?'<div class="sub" style="font-size:.66rem;color:#c0491f;margin-top:2px">¿cuántos '+_uso.toLowerCase()+' llegaron?</div>':'')+(_nuevo?'<div class="sub" style="font-size:.66rem;color:#c88a1f;margin-top:2px">producto nuevo: elige unidad</div>':'')+'</td>'
+      +'<td class="num"><input type="number" step="any" placeholder="'+(_conv?'kg/L reales':'—')+'" value="'+(it.porc!=null?it.porc:'')+'" data-i="'+i+'" data-k="porc" style="width:66px;text-align:right'+(_falta?';background:#FFF4C2;border:1px solid #E8871E;color:#3a2410;-webkit-text-fill-color:#3a2410':'')+'" title="cuánto llegó en la unidad de USO (ej. 2 und de 907 g = 1,814 kg)"> <select data-i="'+i+'" data-k="usoUnidad" style="width:50px" title="unidad en que se usa/costea">'+['','UND','KG','LT'].map(u=>'<option value="'+u+'"'+(u===_uso?' selected':'')+'>'+(u||'—')+'</option>').join('')+'</select>'+(_falta?'<div class="sub" style="font-size:.66rem;color:#c0491f;margin-top:2px">¿cuántos '+_uso.toLowerCase()+' llegaron?</div>':'')+(_nuevo?'<div class="sub" style="font-size:.66rem;color:#c88a1f;margin-top:2px">producto nuevo: elige unidad</div>':'')+'</td>'
       +'<td class="num costuso" style="font-weight:600;color:var(--brand-ink,#1f3a2e)">'+(pu!=null?('$'+fmtN(pu)+(_uso?(' /'+_uso.toLowerCase()):'')):'<span class="muted">—</span>')+'</td>'
       +'<td class="num"><input type="number" step="any" value="'+(it.total!=null?it.total:'')+'" data-i="'+i+'" data-k="total" style="width:88px;text-align:right"></td>'
       +'<td><button class="ghost sm" data-del="'+i+'">✕</button></td>';
