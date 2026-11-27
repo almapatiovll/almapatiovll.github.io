@@ -6,7 +6,7 @@
 <title>Alma Patio — Producciones</title>
 <script>
 /* Auto-actualizador: si el servidor tiene una version mas nueva, recarga sin caché (una sola vez por sesión). */
-(function(){var V='2026-11-27k';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
+(function(){var V='2026-11-27l';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2053,9 +2053,11 @@ const ALIASPROV=[
  {re:/\b21447\b|pomall|pon\w*\s*malta|pony\s*malta/i, n:'PONY MALTA SIN AZUCAR'},
 ];
 function aliasProv(nombre){ const k=norm(nombre||''); for(const a of ALIASPROV){ if(a.re.test(k)) return a.n; } return null; }
-function packMult(nombre){ const s=norm(nombre||''); let m;
+function packMult(nombre){ const orig=String(nombre||''); const s=norm(nombre||''); let m;
   if(/barril|brr?l/i.test(s)){ m=s.match(/(\d{2,3})\s*l\b/i); return m?parseInt(m[1]):30; }
   if(m=s.match(/x\s*(\d{1,3})\b/i)) return parseInt(m[1]);
+  if(m=orig.match(/\(\s*(\d{1,3})\s*\)/)) return parseInt(m[1]); // empaque entre paréntesis: PET(8) -> 8 (del texto original)
+  if(m=orig.match(/pet\s*(\d{1,2})\b/i)) return parseInt(m[1]); // PET8 / PET 8 sin paréntesis
   return null; }
 function packUM(um){ const u=norm(um||''); if(/\bcaj/i.test(u))return 30; if(/sxp|six/i.test(u))return 6; return null; }
 // Sinónimos de insumo (nombre de proveedor/marca -> insumo del diccionario). Se amplía a medida que aparecen.
@@ -2119,7 +2121,7 @@ function renderFactItems(){
     if(it.usoUnidad==null){ it.usoUnidad = usoDe(it.producto) || ''; }
     const _uso = it.usoUnidad || '';
     const _conv = (_uso==='KG'||_uso==='LT') && esUndCompra(it.unidad);
-    if(_conv && (it.porc==null||it.porc==='')){ const pk=presentKg(it.producto); const c=Number(it.cantidad); if(pk&&c){ it.porc=+(c*pk).toFixed(3); } }
+    if(_conv && (it.porc==null||it.porc==='')){ const pk=presentKg(it.producto); const mult=packMult(it.producto)||1; const c=Number(it.cantidad); if(pk&&c){ it.porc=+(c*mult*pk).toFixed(3); } }
     const _falta = _conv && (it.porc==null||it.porc==='');
     const _nuevo = String(it.producto||'').trim() && !matchIng(it.producto) && !it.usoUnidad;
     const pu=costoPorciones(it);
@@ -2235,6 +2237,8 @@ const TALIAS=[
  [/(BRETA|SODA).*(1 ?5|1500|LITRO Y MEDIO)|(1 ?5|1500).*(BRETA|SODA)/,'BEBS018'], // Bretaña/Soda 1.5L -> Soda litro y medio
  [/\bBRETA|\bSODA\b/,'BEBS017'], // Bretaña/Soda por und -> Soda insumo
  [/CHILLON|CHILLIN|PARRILLAD/,'LAC008'], // Queso chillón/parrillado -> Queso para asar
+ [/COCA.*ZERO|ZERO.*COCA/,'BEBS009'], // Coca Cola Zero -> Coca Cola Zero
+ [/COCA\s*COLA|COCACOLA/,'BEBS008'], // Toda coca de compra es para producción -> Cocacola Producción (litros)
 ];
 function toteatMatch(desc, prov){
  const d=tnorm(desc), p=tnorm(prov);
@@ -2265,7 +2269,7 @@ function tQty(it,m){
  if(usoQ!=null && usoCompatible) return usoQ;
  const esPeso=/KG|KILO|GR|GRAMO/.test(uni)||uni===''; const esUnd=/UND|^UN$|UNIDAD/.test(uni);
  if(base==='UN'||base==='BOT'||base==='PTN'){ if(esPeso && TGRAM[m[0]]) return Math.round(cant*1000/TGRAM[m[0]]); return cant; }
- if(base==='L'){ if(esUnd){ const pk=presentKg(it.producto); return pk? +(cant*pk).toFixed(2):cant; } return cant; }
+ if(base==='L'){ if(esUnd){ const pk=presentKg(it.producto); const mult=packMult(it.producto)||1; return pk? +(cant*mult*pk).toFixed(2):cant; } return cant; }
  return cant;
 }
 function tBuildItems(){
