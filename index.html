@@ -6,7 +6,7 @@
 <title>Alma Patio — Producciones</title>
 <script>
 /* Auto-actualizador: si el servidor tiene una version mas nueva, recarga sin caché (una sola vez por sesión). */
-(function(){var V='2026-11-27f';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
+(function(){var V='2026-11-27g';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2231,6 +2231,7 @@ const TALIAS=[
  [/MIZUNA.*(ROJ|MORAD)|(ROJ|MORAD).*MIZUNA/,'FRV032'],[/MIZUNA/,'FRV033'],
  [/LIMON.*COCO|COCO.*LIMON|LIMONADA.*COCO/,'BEBS015'],
  [/AGUA\s*CRISTAL|\bCRISTAL\b/,'BEBS021'], // Gaseosas Lux: Agua Cristal -> Agua Musico
+ [/HATSU/,'BEBS002'], // Agua Hatsu = agua genérica (como la de Nacional de Gaseosas) -> Agua insumo
 ];
 function toteatMatch(desc, prov){
  const d=tnorm(desc), p=tnorm(prov);
