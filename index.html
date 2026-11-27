@@ -6,7 +6,7 @@
 <title>Alma Patio — Producciones</title>
 <script>
 /* Auto-actualizador: si el servidor tiene una version mas nueva, recarga sin caché (una sola vez por sesión). */
-(function(){var V='2026-11-27d';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
+(function(){var V='2026-11-27e';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2236,13 +2236,14 @@ function toteatMatch(desc, prov){
  for(const r of TPROV){ if(r.re.test(p)){ const c=r.f(d); if(c&&tcod(c))return tcod(c); } }
  for(const a of TALIAS){ if(a[0].test(d)){ const m=tcod(a[1]); if(m)return m; } }
  if(TMAP[d])return TMAP[d];
- // Emparejado por palabras tolerante: ignora la coletilla "INSUMO" y acepta singular/plural y prefijos (CLAVO≈CLAVOS)
- const stem=t=>t.length>4?t.replace(/S$/,''):t;              // clavos->clavo (no acorta <=4)
- const dtoks=d.split(' ').filter(t=>t.length>=3).map(stem);
- const tokMatch=(mt)=> dtoks.some(dt=>{ if(dt===mt)return true; const sh=mt.length<dt.length?mt:dt, lo=mt.length<dt.length?dt:mt; return sh.length>=4 && lo.indexOf(sh)===0; });
+ // Emparejado por palabras: cada palabra del maestro (ignorando "INSUMO") debe aparecer en la factura.
+ // Tolera singular/plural por stem, pero SIN prefijos (así "AGUA" nunca empareja con "AGUACATE").
+ const dsp=d.replace(/ /g,'');
+ const stem=t=>t.length>4?t.replace(/S$/,''):t;              // clavos->clavo, tomates->tomate (no acorta <=4)
+ const tokMatch=(mt)=>{ if(dsp.indexOf(mt)>=0)return true; const s=stem(mt); return s.length>=4 && s!==mt && dsp.indexOf(s)>=0; };
  let best=null,bl=0;
  for(const m of (TMAE||[])){
-   const mtoks=tnorm(m[1]).split(' ').filter(t=>t.length>=4 && t!=='INSUMO').map(stem);
+   const mtoks=tnorm(m[1]).split(' ').filter(t=>t.length>=4 && t!=='INSUMO');
    if(!mtoks.length)continue;
    if(mtoks.every(tokMatch)){ const sc=mtoks.reduce((s,t)=>s+t.length,0); if(sc>bl){best=m;bl=sc;} }
  }
