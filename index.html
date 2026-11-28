@@ -6,7 +6,7 @@
 <title>Alma Patio — Producciones</title>
 <script>
 /* Auto-actualizador: si el servidor tiene una version mas nueva, recarga sin caché (una sola vez por sesión). */
-(function(){var V='2026-11-27l';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
+(function(){var V='2026-11-27m';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2239,6 +2239,18 @@ const TALIAS=[
  [/CHILLON|CHILLIN|PARRILLAD/,'LAC008'], // Queso chillón/parrillado -> Queso para asar
  [/COCA.*ZERO|ZERO.*COCA/,'BEBS009'], // Coca Cola Zero -> Coca Cola Zero
  [/COCA\s*COLA|COCACOLA/,'BEBS008'], // Toda coca de compra es para producción -> Cocacola Producción (litros)
+ // --- Reglas del análisis de facturas de julio (2026-11-27) ---
+ [/CRESPA.*(MORAD|ROJ)/,'FRV023'], // lechuga crespa morada -> Lechuga morada
+ [/CRESPA.*VERD/,'FRV024'],        // lechuga crespa verde -> Lechuga verde
+ [/MOLID.*RES|RES.*MOLID/,'CAR005'], // molida de res -> Carne molida de res
+ [/RICA\s*PAPA|PAPA.*FRANCES|FRANCES.*PAPA/,'ABA042'], // papa francesa / ricapapa
+ [/FRY\s*SUPER|SUPER\s*FRY|FRYTOL/,'ABA004'], // aceite super fry/frytol -> Aceite freír
+ [/MAIZ.*(RICONGE|CONGEL|DESGRAN|DULCE|TIERN)/,'ABA029'], // maíz congelado/desgranado
+ [/PARMESAN.*BLOQUE|BLOQUE.*PARMESAN/,'LAC009'], // parmesano bloque
+ [/PARMESAN/,'LAC010'],            // parmesano (por defecto rallado)
+ [/QUESO\s*CREMA|CREMOSITO|MASCARP/,'LAC006'], // queso crema/cremosito/mascarpone
+ [/AHUYAM|AUYAM|AHULLAM/,'FRV063'], // ahuyama
+ [/BRIOCHE/,'ABA040'],             // brioche -> Pan hamburguesa
 ];
 function toteatMatch(desc, prov){
  const d=tnorm(desc), p=tnorm(prov);
