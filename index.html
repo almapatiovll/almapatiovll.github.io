@@ -6,7 +6,7 @@
 <title>Alma Patio — Producciones</title>
 <script>
 /* Auto-actualizador: si el servidor tiene una version mas nueva, recarga sin caché (una sola vez por sesión). */
-(function(){var V='2026-11-27q';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
+(function(){var V='2026-11-27r';try{var tried=sessionStorage.getItem('ap_ver_try')||'';fetch('appver.txt?x='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(t){if(!t)return;t=t.trim();if(t&&t!==V&&tried!==t){sessionStorage.setItem('ap_ver_try',t);location.replace(location.pathname+'?v='+encodeURIComponent(t)+'&t='+Date.now());}}).catch(function(){});}catch(e){}})();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1103,7 +1103,6 @@ async function buildFactPx(){
   FACTPX={}; let rows=[];
   try{ const r=await fetch(PREST+"?select=insumo,precio,unidad,precio_uso,unidad_uso,fecha&order=fecha.desc.nullslast",{headers:HDRS}); rows=r.ok?await r.json():[]; }catch(e){ return; }
   rows.forEach(row=>{ const k0=norm(row.insumo); const al=ALIAS[k0]; const key=(al&&al.conf&&al.dest)?al.dest:k0;
-    if(FACTPX[key]) return; // el primero es el más reciente (order desc)
     let c=null,b=null;
     if(row.precio_uso!=null && row.unidad_uso){ c=Number(row.precio_uso); b=uBaseNorm(row.unidad_uso); }
     else if(row.precio!=null){ c=Number(row.precio); b=uBaseNorm(row.unidad); }
@@ -1111,6 +1110,8 @@ async function buildFactPx(){
     // candado: si el insumo ya está en el catálogo con otra unidad base, NO lo pisamos (evita romper el costeo)
     const cat=COSTMAP[key]||TOTEAT[key]||costIdx()[key];
     if(cat && cat.b && uBaseNorm(cat.b)!==b) return;
+    const prev=FACTPX[key];                                          // REGLA PRECIO MAYOR: la base la fija el más reciente,
+    if(prev){ if(uBaseNorm(prev.b)!==b) return; if(c<=prev.c) return; } // pero dentro de esa base se queda el precio MÁS ALTO
     FACTPX[key]={c,b,n:row.insumo,fecha:row.fecha,fx:true};
   });
 }
@@ -1553,9 +1554,23 @@ function renderAreaTabs(){
     c.appendChild(b);
   });
 }
+function engCosto(it){ // costo del motor (precio de compra, SIN merma para inventario físico)
+  try{
+    if(it.tipo==='preparacion'){ const r=recetasAll().find(x=>norm(x.n)===norm(it.nombre)); if(r){ const cc=costoReceta(r.items); return (cc&&cc.tot>0)?cc.tot:null; } return null; }
+    const p=priceOf(norm(it.nombre)); if(!p||!(p.c>0)) return null;
+    return p.merma? Math.round(p.c*p.merma) : p.c; // quita la merma: el stock vale lo que costó comprarlo
+  }catch(e){ return null; }
+}
+function costoDe(it){ // REGLA PRECIO MAYOR: el mayor entre el costo guardado y el del motor; llena los $0
+  let s=(it.costo!=null && it.costo>0)?Number(it.costo):null;
+  const e=engCosto(it);
+  if(s!=null && e!=null) return Math.max(s,e);
+  return s!=null?s:e;
+}
 function valorItem(it){
-  const q=it.cantidad; if(q==null||q===''||isNaN(q)||it.costo==null) return null;
-  return Math.round(Number(q)*Number(it.costo));
+  const q=it.cantidad; if(q==null||q===''||isNaN(q)) return null;
+  const c=costoDe(it); if(c==null) return null;
+  return Math.round(Number(q)*Number(c));
 }
 function renderInv(){
   let items=INV.filter(x=>x.area===areaSel);
@@ -1566,10 +1581,10 @@ function renderInv(){
   else{
     b.innerHTML='';
     for(const it of items){
-      const tr=document.createElement('tr'); const val=valorItem(it);
+      const tr=document.createElement('tr'); const val=valorItem(it); const cst=costoDe(it);
       tr.innerHTML='<td>'+it.nombre+(it.tipo==='preparacion'?' <span class="chip-badge">receta</span>':'')+'</td>'
         +'<td>'+(it.unidad||'')+'</td>'
-        +'<td class="num">'+(it.costo!=null?'$'+fmtN(it.costo):'—')+'</td>'
+        +'<td class="num">'+(cst!=null?'$'+fmtN(cst):'—')+'</td>'
         +'<td class="num"><input type="text" inputmode="decimal" value="'+(it.cantidad!=null?it.cantidad:'')+'" data-id="'+it.id+'" class="invq" style="width:82px;text-align:right"></td>'
         +'<td class="num invval">'+(val==null?'':'$'+fmtN(val))+'</td>'
         +'<td><button class="ghost sm invdel" data-id="'+it.id+'">✕</button></td>';
@@ -1692,8 +1707,8 @@ const CREST=SB_URL+"/rest/v1/inventario_corte";
 let CORTES=[];
 function snapshotInventario(){
   let total=0; const por_area={}; const items=[];
-  INV.forEach(it=>{ const v=valorItem(it); const val=(v==null?0:v);
-    items.push({nombre:it.nombre,area:it.area,tipo:it.tipo,unidad:it.unidad,costo:it.costo,cantidad:it.cantidad,valor:val});
+  INV.forEach(it=>{ const v=valorItem(it); const val=(v==null?0:v); const cst=costoDe(it);
+    items.push({nombre:it.nombre,area:it.area,tipo:it.tipo,unidad:it.unidad,costo:(cst!=null?cst:it.costo),cantidad:it.cantidad,valor:val});
     if(val){ total+=val; por_area[it.area]=(por_area[it.area]||0)+val; }
   });
   return {total:Math.round(total),por_area,items};
